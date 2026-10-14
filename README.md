@@ -25,6 +25,21 @@ pyproject.toml     Package metadata and dependencies
 
 ## Web UI
 
+### Render demo deployment
+
+Connect the GitHub repository as a Python Web Service, branch `master`, root
+directory blank, Free instance. Build: `pip install .`. Start:
+`python -m mini_ai_agent.server --host 0.0.0.0`. Render supplies `PORT`.
+Alternatively, use the included `render.yaml` as a Blueprint.
+
+Do not upload `.env` or `.venv`. For the first public smoke test, leave the API
+key unset: charts work, paid AI requests are disabled. Before enabling
+`OPENAI_API_KEY` in Render's environment settings, add authentication and request
+limits. The current stdlib HTTP server is a prototype, not a hardened production
+server. Sessions are memory-only and disappear on restart or free-tier sleep.
+Successful local tests do not guarantee that Yahoo permits queries from Render;
+verify stock data after deployment. No deployment or Git push is automatic here.
+
 ```powershell
 cd C:\GIT\MINI-AI-AGENT
 .\.venv\Scripts\python.exe -m mini_ai_agent.server --port 8765

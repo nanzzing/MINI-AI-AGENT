@@ -5,6 +5,7 @@ GET은 화면·설정 상태를 전달하고, POST /api/chat은 입력을 llm.py
 """
 
 import argparse
+import os
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -129,12 +130,13 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    """지정한 포트에서 실행한다. 127.0.0.1에만 연결해 로컬에서 접근한다."""
+    """로컬은 루프백, 배포는 --host와 플랫폼의 PORT 환경변수를 사용한다."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8765")))
     args = parser.parse_args()
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    print(f"MINI-AI-AGENT: http://127.0.0.1:{args.port}", flush=True)
+    server = ThreadingHTTPServer((args.host, args.port), Handler)
+    print(f"MINI-AI-AGENT: http://{args.host}:{args.port}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

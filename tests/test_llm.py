@@ -74,9 +74,12 @@ class LLMTests(unittest.TestCase):
     def test_auth_error_is_safe(self):
         # 제공자의 원본 오류가 사용자에게 노출되지 않고 실패한 입력도 저장되지 않아야 한다.
         conversation = OpenAIConversation(self.make_client([], 401))
-        with self.assertRaises(ChatError) as error:
-            conversation.respond("안녕")
+        with self.assertLogs("mini_ai_agent.llm", level="WARNING") as logs:
+            with self.assertRaises(ChatError) as error:
+                conversation.respond("안녕")
         self.assertNotIn("secret-value", str(error.exception))
+        self.assertNotIn("secret-value", str(logs.output))
+        self.assertIn("HTTP 401", str(error.exception))
         self.assertEqual(conversation.history, [])
 
     def test_loop_limit_rolls_back_state(self):

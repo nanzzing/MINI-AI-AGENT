@@ -7,7 +7,9 @@ server.py와 main.py가 이 모듈을 사용한다. 모델은 실행할 도구�
 from copy import deepcopy
 from dataclasses import asdict
 import json
+import logging
 import os
+import re
 from pathlib import Path
 from threading import Lock
 
@@ -185,12 +187,23 @@ class OpenAIConversation:
             except (APIConnectionError, APITimeoutError) as error:
                 raise ChatError("OpenAI에 연결하지 못했어요. 네트워크를 확인하고 다시 시도해 주세요.") from error
             except APIStatusError as error:
-                # 원본 오류에 민감한 정보가 섞일 수 있어 사용자용 메시지로 변환한다.
-                messages = {401: "OpenAI API 키 인증에 실패했어요. .env의 키를 확인해 주세요.",
+                # 원문에는 키 일부가 포함될 수 있으므로 알려진 오류 코드와 요청 ID만 기록한다.
+                body = error.body if isinstance(error.body, dict) else {}
+                detail = body.get("error", body)
+                code = detail.get("code") if isinstance(detail, dict) else None
+                known = {"invalid_api_key", "invalid_organization", "organization_deactivated",
+                         "account_deactivated", "ip_not_authorized", "insufficient_quota",
+                         "rate_limit_exceeded", "model_not_found", "permission_denied"}
+                code = code if isinstance(code, str) and code in known else "unknown"
+                request_id = getattr(error, "request_id", None)
+                request_id = request_id if isinstance(request_id, str) and re.fullmatch(r"req_[a-zA-Z0-9_-]{1,100}", request_id) else "unavailable"
+                logging.getLogger(__name__).warning("OpenAI failure status=%s code=%s request_id=%s", error.status_code, code, request_id)
+                messages = {401: "OpenAI가 서버의 인증을 거절했습니다. Render는 Environment, 로컬은 .env 설정이 적용됩니다.",
                             429: "OpenAI 사용량 또는 요청 한도에 도달했어요. API 결제·한도를 확인해 주세요.",
                             403: "이 API 키로 요청한 모델에 접근할 수 없어요.",
                             404: "모델을 찾을 수 없어요. OPENAI_MODEL 설정을 확인해 주세요."}
-                raise ChatError(messages.get(error.status_code, "OpenAI 요청에 실패했어요. 모델 설정을 확인하고 다시 시도해 주세요.")) from error
+                message = messages.get(error.status_code, "OpenAI 요청에 실패했어요. 모델 설정을 확인하고 다시 시도해 주세요.")
+                raise ChatError(f"{message} [HTTP {error.status_code}, code={code}, request_id={request_id}]") from error
             finally:
                 # 여기서 생성한 연결만 닫는다. 외부에서 주입한 테스트 클라이언트는 호출자가 관리한다.
                 if self.client is None:

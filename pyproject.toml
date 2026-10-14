@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mini-ai-agent"
+version = "0.1.0"
+description = "A small Python AI agent learning project"
+requires-python = ">=3.11"
+dependencies = ["openai>=2.0,<3", "python-dotenv>=1.0,<2", "yfinance>=1.7,<2", "pandas>=2.2,<4"]
+
+[project.scripts]
+mini-ai-agent = "mini_ai_agent.main:main"
+mini-ai-agent-web = "mini_ai_agent.server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+mini_ai_agent = ["static/*", "data/*.json", "prompts/*.txt"]

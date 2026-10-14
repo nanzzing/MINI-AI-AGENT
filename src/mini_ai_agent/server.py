@@ -69,14 +69,18 @@ class Handler(BaseHTTPRequestHandler):
                  "/charts.js": ("charts.js", "text/javascript"), "/market.js": ("market.js", "text/javascript"),
                  "/indicators.js": ("indicators.js", "text/javascript"),
                  "/drawings.js": ("drawings.js", "text/javascript"),
-                 "/market.css": ("market.css", "text/css")}
+                 "/market.css": ("market.css", "text/css"),
+                 "/og-penguin.png": ("og-penguin.png", "image/png")}
         target = files.get(self.path.split("?", 1)[0])
         if not target or not (STATIC / target[0]).is_file():
             self.send_error(404)
             return
         body = (STATIC / target[0]).read_bytes()
         self.send_response(200)
-        self.send_header("Content-Type", f"{target[1]}; charset=utf-8")
+        content_type = target[1]
+        if content_type.startswith("text/"):
+            content_type += "; charset=utf-8"
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)

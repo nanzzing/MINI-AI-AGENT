@@ -64,7 +64,7 @@ TOOLS = [
     *[{"type": "function", "name": name, "description": description,
        "parameters": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True}
       for name, description in [
-          ("get_price_analysis", "현재 종목·관점의 가격 이력 요약과 파이썬이 계산한 기술적 지표를 조회합니다."),
+          ("get_price_analysis", "현재 종목·관점의 가격 이력 요약과 파이썬이 계산한 기술적 지표를 조회합니다. RSI·MACD와 각각의 상승·하락 다이버전스 판정 및 비교 전환점을 포함합니다."),
           ("get_news", "현재 종목·관점에 맞는 최근 뉴스 제목과 출처를 조회합니다. 모든 관점에서 필수입니다."),
           ("get_events", "단기 관점의 향후 실적 발표 예상 일정을 조회합니다. 중기·장기에는 호출하지 마세요."),
       ]],
@@ -285,7 +285,8 @@ class OpenAIConversation:
                 return {"context": asdict(state), "focus": list(RESEARCH_FOCUS[selected]) if selected else [],
                         "research": self.scoped_resources(state, resources),
                         "required_tools": self.required_tools(state),
-                        "available_data": "reusable_tools 자료는 재사용할 수 있습니다. 부족하거나 최신 조회가 필요하면 해당 도구를 호출하세요."}
+                        "missing_tools": self.missing_tools(state, resources),
+                        "available_data": "required_tools는 필요한 자료 종류이며 전부 다시 호출하라는 뜻이 아닙니다. reusable_tools는 재사용 후보이고, missing_tools는 아직 확보하지 못한 자료입니다."}
             return {"error": "지원하지 않는 도구입니다."}
         except (ValueError, TypeError):
             # 잘못된 도구 입력은 모델이 수정할 수 있도록 도구 결과로 반환한다.
@@ -298,6 +299,23 @@ class OpenAIConversation:
             return []
         return ["get_price_analysis", "get_financials", "get_news"] + (
             ["get_events"] if state.horizon == Horizon.SHORT else [])
+
+    def missing_tools(self, state, resources):
+        """필수 자료 중 이번 턴에 시도하지 않았고 재사용도 불가능한 종류만 반환한다."""
+        available = set(resources.get("attempted_tools", [])) | set(self.reusable_tools(state, resources))
+        return [name for name in self.required_tools(state) if name not in available]
+
+    def callable_tools(self, state, expected_context=None):
+        """상태 설정이 끝나기 전에는 조회 도구를 제공하지 않는다.
+
+        프롬프트의 순서 지시만으로는 모델이 관점 변경 전에 이전 관점으로 조회할 수 있다.
+        이 함수는 전제조건을 강제하되, 확정된 상태에서는 재사용/추가 조회 선택을 허용한다.
+        """
+        current = [state.code, state.exchange, state.horizon.value if state.horizon else None]
+        names = {"search_stock", "set_research_context"}
+        if expected_context is None or current == expected_context:
+            names.update(self.required_tools(state))
+        return [tool for tool in TOOLS if tool["name"] in names]
 
     def respond(self, message: str) -> str:
         """한 사용자 메시지를 처리하며 필요한 만큼 모델/도구 왕복을 수행한다.
@@ -371,7 +389,13 @@ class OpenAIConversation:
                     if expected_context and context_missing:
                         view_state.code, view_state.exchange = expected_context[:2]
                         view_state.horizon = Horizon(expected_context[2]) if expected_context[2] else None
-                    view = self.scoped_resources(view_state, resources)
+                    # 변경 후 관점에서도 유효한 자료만 공개한다. 이전 관점의 reusable_tools
+                    # 목록이나 뉴스가 남아 모델에게 잘못된 재사용 신호를 주지 않게 한다.
+                    view_resources = deepcopy(resources)
+                    if context_missing:
+                        view_resources["attempted_tools"] = []
+                    self.prune_resources(view_state, view_resources)
+                    view = self.scoped_resources(view_state, view_resources)
                     if [view_state.code, view_state.exchange] != [state.code, state.exchange]:
                         view = {}
                     bank = evidence_bank(list(RESEARCH_FOCUS[view_state.horizon]) if view_state.horizon else [], view)
@@ -379,15 +403,24 @@ class OpenAIConversation:
                     # 어떤 원본을 가리키는지 서버가 확인할 수 있게 이 목록을 모델에도 제공한다.
                     response_instructions = instructions + "\n" + ANSWER_INSTRUCTIONS
                     response_instructions += "\n현재 조사 상태:\n" + json.dumps(asdict(state), ensure_ascii=False)
+                    response_instructions += "\n이번 요청의 진행 조건:\n" + json.dumps({
+                        "context_update_required": context_missing,
+                        "target_context": expected_context,
+                        "missing_tools": self.missing_tools(view_state, view_resources),
+                        "rule": "context_update_required이면 먼저 상태를 설정하고 결과를 기다립니다. 이후 보유 자료가 충분하면 재사용하고 필요한 조회만 선택합니다."
+                    }, ensure_ascii=False)
                     response_instructions += "\n현재 유효한 보유 자료(재사용 여부를 판단하세요):\n" + json.dumps(view, ensure_ascii=False)
                     response_instructions += "\n이번 호출의 근거 목록:\n" + json.dumps(bank, ensure_ascii=False)
                     # 매 호출에 도구 정의와 누적 이력을 전달한다. store=False이므로
                     # 이 앱은 서버 메모리의 history를 이용해 다음 요청의 문맥을 구성한다.
+                    offered_tools = self.callable_tools(state, expected_context)
+                    offered_names = {tool["name"] for tool in offered_tools}
                     steps.append({"round": _ + 1, "event": "모델 호출", "detail":
                         "질문·현재 상태·도구 설명·현재 범위의 자료를 전달했습니다.",
-                        "available_tools": self.reusable_tools(view_state, resources)})
+                        "available_tools": self.reusable_tools(view_state, view_resources),
+                        "callable_tools": sorted(offered_names)})
                     response = client.responses.create(
-                        model=model, instructions=response_instructions, input=history, tools=TOOLS,
+                        model=model, instructions=response_instructions, input=history, tools=offered_tools,
                         store=False, max_output_tokens=4000,
                         text={"format": {"type": "json_schema", "name": "research_answer", "strict": True, "schema": answer_schema(bank)}},
                         **choice,
@@ -413,9 +446,7 @@ class OpenAIConversation:
                                 + json.dumps(expected_context, ensure_ascii=False)
                                 + " 입니다. set_research_context로 이 문맥을 저장한 후 조사하세요. 지금 작성한 답변은 자료 확인 전 초안이며 사용자에게 전달되지 않았습니다."})
                             continue
-                        missing = [name for name in self.required_tools(state)
-                                   if name not in resources.get("attempted_tools", [])
-                                   and name not in self.reusable_tools(state, resources)]
+                        missing = self.missing_tools(state, resources)
                         # '이번에 호출했는가' 또는 '유효한 보유 자료가 있는가'를 검사한다.
                         # 이 검사로 모델이 자료를 실제 추론에 사용했다는 사실은 알 수 없다.
                         if missing:
@@ -466,7 +497,13 @@ class OpenAIConversation:
                         started = perf_counter()
                         steps.append({"round": _ + 1, "event": "모델 → 파이썬", "detail":
                                       call.name + " 실행 요청", "call_id": call.call_id})
-                        result = self.execute_tool(call.name, call.arguments, state, resources)
+                        # 도구 노출 제한과 실행 검증을 둘 다 적용한다. 같은 응답 안에서
+                        # 관점이 바뀌더라도, 제공하지 않았던 도구를 곧바로 실행하지 않는다.
+                        allowed_now = {tool["name"] for tool in self.callable_tools(state, expected_context)}
+                        if call.name not in offered_names or call.name not in allowed_now:
+                            result = {"error": "현재 단계에서 사용할 수 없는 도구입니다. 종목·관점 설정 결과를 확인한 뒤 제공된 도구만 요청하세요."}
+                        else:
+                            result = self.execute_tool(call.name, call.arguments, state, resources)
                         if call.name == "get_financials" and "error" not in result:
                             result = self.scoped_resources(state, resources)["financials"]
                         if call.name == "set_research_context" and "error" not in result:

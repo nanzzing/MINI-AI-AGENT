@@ -13,7 +13,7 @@ window.marketView = (() => {
     selected = null,
     horizon = null,
     sequence = 0,
-    range = "3M";
+    range = "RECENT";
   const el = (id) => document.getElementById(id);
   const number = (value) =>
     Number(value).toLocaleString("ko-KR", { maximumFractionDigits: 2 });
@@ -86,30 +86,46 @@ window.marketView = (() => {
   function updateIndicators(visible) {
     // visible은 '화면에 잘린 구간'이 아니라 현재 봉 주기의 전체 자료다.
     // 지표 준비 기간도 날짜 슬롯을 남겨 두 차트의 logical index가 어긋나지 않게 한다.
-    indicatorData = calculateIndicators(visible);
-    for (const key of ["upper", "middle", "lower"]) {
-      bandLines[key].setData(indicatorData[key]);
-      bandLines[key].applyOptions({ visible: bandToggle.checked });
-    }
-    const mode = paneSelect.value;
-    el("indicator-panel").hidden = mode === "none";
-    for (const [key, series] of Object.entries(indicatorLines)) {
-      // 준비 기간의 빈 점도 포함해 가격 차트와 날짜 인덱스를 일치시킨다.
-      const points = new Map(indicatorData[key].map((p) => [p.time, p]));
-      series.setData(
-        visible.map((bar) => points.get(bar.time) || { time: bar.time }),
-      );
-      series.applyOptions({
-        visible:
-          mode === "rsi"
-            ? key === "rsi"
-            : mode === "macd"
-              ? key !== "rsi"
-              : mode === key,
-      });
-    }
     const bounds = chart.timeScale().getVisibleLogicalRange();
-    if (bounds) indicatorChart.timeScale().setVisibleLogicalRange(bounds);
+    const previousSyncing = syncing;
+    syncing = true;
+    try {
+      indicatorData = calculateIndicators(visible);
+      for (const key of ["upper", "middle", "lower"]) {
+        bandLines[key].setData(indicatorData[key]);
+        bandLines[key].applyOptions({ visible: bandToggle.checked });
+      }
+      const mode = paneSelect.value;
+      const panel = el("indicator-panel");
+      const opening = panel.hidden && mode !== "none";
+      panel.hidden = mode === "none";
+      if (opening) {
+        // 숨겨진 차트의 너비는 0이다. 실제 크기를 먼저 맞춰야 전체 기간이
+        // 최소 봉 간격으로 계산되어 가격 차트까지 과도하게 축소되는 일을 막는다.
+        const surface = el("indicator-chart");
+        indicatorChart.applyOptions({ autoSize: false });
+        indicatorChart.resize(surface.clientWidth, surface.clientHeight);
+        indicatorChart.applyOptions({ autoSize: true });
+      }
+      for (const [key, series] of Object.entries(indicatorLines)) {
+        // 준비 기간의 빈 점도 포함해 가격 차트와 날짜 인덱스를 일치시킨다.
+        const points = new Map(indicatorData[key].map((p) => [p.time, p]));
+        series.setData(
+          visible.map((bar) => points.get(bar.time) || { time: bar.time }),
+        );
+        series.applyOptions({
+          visible:
+            mode === "rsi"
+              ? key === "rsi"
+              : mode === "macd"
+                ? key !== "rsi"
+                : mode === key,
+        });
+      }
+      if (bounds && !panel.hidden) indicatorChart.timeScale().setVisibleLogicalRange(bounds);
+    } finally {
+      syncing = previousSyncing;
+    }
     indicatorLegend();
   }
   function indicatorLegend(param) {
@@ -169,7 +185,8 @@ window.marketView = (() => {
         horzLines: { color: "#e7ece9" },
       },
       rightPriceScale: { borderVisible: false },
-      timeScale: { borderVisible: false },
+      // 기본 최소 봉 간격(0.5px)은 수십 년 이력을 한 화면에 담지 못한다.
+      timeScale: { borderVisible: false, minBarSpacing: 0.001, lockVisibleTimeRangeOnResize: true },
       localization: { locale: "ko-KR" },
     });
     candles = chart.addCandlestickSeries({
@@ -182,16 +199,13 @@ window.marketView = (() => {
     candles
       .priceScale()
       .applyOptions({ scaleMargins: { top: 0.08, bottom: 0.27 } });
-    // 캔들의 종가 위치에만 교차선 원형 표시를 추가한다. 연결선은 그리지 않는다.
+    // 종가 자료는 보조지표와 교차선을 연동할 때만 사용하고 선과 점은 숨긴다.
     closeGuide = chart.addLineSeries({
       color: "transparent",
       lineVisible: false,
       priceLineVisible: false,
       lastValueVisible: false,
-      crosshairMarkerVisible: true,
-      crosshairMarkerRadius: 4,
-      crosshairMarkerBackgroundColor: "#187454",
-      crosshairMarkerBorderColor: "#ffffff",
+      crosshairMarkerVisible: false,
     });
     volumes = chart.addHistogramSeries({
       priceFormat: { type: "volume" },
@@ -298,7 +312,7 @@ window.marketView = (() => {
         horzLines: { color: "#e7ece9" },
       },
       rightPriceScale: { minimumWidth: 70 },
-      timeScale: { borderVisible: false },
+      timeScale: { borderVisible: false, minBarSpacing: 0.001, lockVisibleTimeRangeOnResize: true },
     });
     chart.priceScale("right").applyOptions({ minimumWidth: 70 });
     indicatorChart
@@ -340,7 +354,11 @@ window.marketView = (() => {
       [indicatorChart, chart],
     ])
       source.timeScale().subscribeVisibleLogicalRangeChange((bounds) => {
-        if (!bounds || syncing) return;
+        if (!bounds || syncing || panel.hidden) return;
+        // 준비 기간이 부족해 값이 없는 보조지표는 가격 차트의 범위를 바꾸지 않는다.
+        if (source === indicatorChart && !Object.entries(indicatorLines).some(
+          ([key, series]) => series.options().visible && indicatorData?.[key]?.length,
+        )) return;
         syncing = true;
         try {
           target.timeScale().setVisibleLogicalRange(bounds);
@@ -414,12 +432,24 @@ window.marketView = (() => {
     updateIndicators(visible);
     if (visible.length) {
       const count = range === "3M" ? 65 : range === "1Y" ? 252 : visible.length;
-      chart
-        .timeScale()
-        .setVisibleLogicalRange({
-          from: Math.max(-1, visible.length - count),
-          to: visible.length + 2,
-        });
+      let from = Math.max(-1, visible.length - count);
+      if (range === "RECENT") {
+        // 봉 개수 대신 실제 날짜 간격의 최근 10%를 보여준다. 전체 원본은 유지한다.
+        const first = Date.parse(visible[0].time);
+        const last = Date.parse(visible.at(-1).time);
+        const cutoff = last - (last - first) / 10;
+        from = visible.findIndex((bar) => Date.parse(bar.time) >= cutoff);
+      }
+      const bounds = { from, to: visible.length + 2 };
+      const previousSyncing = syncing;
+      syncing = true;
+      try {
+        chart.timeScale().setVisibleLogicalRange(bounds);
+        // 종목 변경 때 보조지표의 이전 범위가 새 가격 차트에 되돌아오지 않게 맞춘다.
+        if (!el("indicator-panel").hidden) indicatorChart.timeScale().setVisibleLogicalRange(bounds);
+      } finally {
+        syncing = previousSyncing;
+      }
     }
     document
       .querySelectorAll("[data-range]")
@@ -449,10 +479,12 @@ window.marketView = (() => {
     el("events-section").hidden = true;
   }
   async function load(params) {
-    // params는 query 또는 code+exchange, 선택적 horizon이다. AI 대화와 독립된 GET 요청이다.
+    // horizon은 재무 범위 표시에만 쓰고, 차트 GET은 항상 전체 가격 이력을 반환한다.
+    // 새 검색/채팅 요청은 전체 기간의 최근 10%로 시작하고, 원본은 전체 보기/이동에 사용한다.
     const request = ++sequence;
     // 요청 번호를 캡처한다. 나중에 보낸 요청이 먼저 끝나면 옛 응답이 화면을 덮지 못하게 한다.
     el("chart-status").textContent = "가격 데이터를 불러오는 중…";
+    range = "RECENT";
     bars = [];
     redraw();
     try {

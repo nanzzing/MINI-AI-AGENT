@@ -21,6 +21,24 @@ class MarketTests(unittest.TestCase):
         self.assertEqual(market.yahoo_symbol({"code": "BRK.B", "exchange": "NYSE"}), "BRK-B")
 
     @patch.object(market.yf, "Ticker")
+    def test_chart_uses_all_history_without_changing_analysis_periods(self, ticker):
+        instance = ticker.return_value
+        instance.history.return_value = pd.DataFrame(
+            {"Open": [100], "High": [110], "Low": [90], "Close": [105], "Volume": [1000]},
+            index=pd.to_datetime(["2000-01-03"]),
+        )
+        instance.history_metadata = {"currency": "KRW", "exchangeTimezoneName": "Asia/Seoul"}
+        for horizon in (None, "단기", "중기", "중장기", "장기"):
+            result = market.price_history(self.stock, horizon, full_history=True)
+            self.assertEqual(result["requested_period"], "max")
+            self.assertEqual(result["bars"][0]["time"], "2000-01-03")
+        # 관점이 달라도 같은 전체 차트를 재사용하고, 분석용 캐시는 따로 유지한다.
+        instance.history.assert_called_once_with(period="max", interval="1d", auto_adjust=True, timeout=15)
+        for horizon, period in (("단기", "2y"), ("중기", "5y"), ("장기", "5y")):
+            self.assertEqual(market.price_history(self.stock, horizon)["requested_period"], period)
+        self.assertEqual([call.kwargs["period"] for call in instance.history.call_args_list], ["max", "2y", "5y"])
+
+    @patch.object(market.yf, "Ticker")
     def test_no_calendar_network_for_medium_long(self, ticker):
         for horizon in ("중기", "중장기", "장기"):
             self.assertEqual(market.earnings_events(self.stock, horizon)["status"], "not_requested")

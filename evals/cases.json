@@ -1,0 +1,24 @@
+[
+  {"id":"clarify_then_reuse","turns":[
+    {"input":"삼전 어때?","code":"005930","horizon":null,"no_fetch":true},
+    {"input":"장기","code":"005930","horizon":"장기","finance":[5,8]},
+    {"input":"중기로는?","code":"005930","horizon":"중장기","finance":[3,8],"reuse_financials":true},
+    {"input":"단기로는?","code":"005930","horizon":"단기","finance":[0,4]}]},
+  {"id":"expand_scope","turns":[
+    {"input":"애플 단기 분석해줘","code":"AAPL","horizon":"단기","finance":[0,4]},
+    {"input":"장기적으로는 어때?","code":"AAPL","horizon":"장기","finance":[5,8],"fetch_financials":true}]},
+  {"id":"switch_company","turns":[
+    {"input":"애플 중기 분석","code":"AAPL","horizon":"중장기","finance":[3,8]},
+    {"input":"이번엔 테슬라 장기","code":"TSLA","horizon":"장기","finance":[5,8],"fetch_financials":true}]},
+  {"id":"missing_financials","fixture":"unavailable","turns":[
+    {"input":"삼성전자 장기 분석해줘. 재무 자료가 없으면 그 사실을 알려줘","code":"005930","horizon":"장기","finance_status":"unavailable"}]},
+  {"id":"partial_financials","fixture":"partial","turns":[
+    {"input":"삼성전자 중기 분석해줘. 제공되지 않은 기간은 추정하지 마","code":"005930","horizon":"중장기","finance_status":"partial"}]},
+  {"id":"ambiguous_period","turns":[
+    {"input":"테슬라 어때?","code":"TSLA","horizon":null,"no_fetch":true}]},
+  {"id":"unknown_company","turns":[
+    {"input":"존재하지않는가상회사XYZ987 장기 분석해줘","code":null,"horizon":null,"no_fetch":true}]},
+  {"id":"same_scope_followup","turns":[
+    {"input":"애플 장기 분석해줘","code":"AAPL","horizon":"장기","finance":[5,8]},
+    {"input":"기존 자료로 위험을 정리해줘","code":"AAPL","horizon":"장기","reuse_financials":true}]}
+]

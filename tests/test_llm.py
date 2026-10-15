@@ -121,6 +121,48 @@ class LLMTests(unittest.TestCase):
                 OpenAIConversation().respond("안녕")
             constructor.assert_not_called()
 
+    def test_tool_definitions_follow_context_prerequisites(self):
+        from mini_ai_agent.conversation import Horizon
+        conversation = OpenAIConversation()
+        names = lambda expected=None: {item["name"] for item in conversation.callable_tools(conversation.state, expected)}
+        self.assertEqual(names(), {"search_stock", "set_research_context"})
+        conversation.state.code, conversation.state.exchange = "005930", "KOSPI"
+        conversation.state.horizon = Horizon.MEDIUM
+        self.assertIn("get_financials", names())
+        self.assertNotIn("get_events", names())
+        self.assertEqual(names(["005930", "KOSPI", "단기"]), {"search_stock", "set_research_context"})
+        self.assertEqual(names(["AAPL", "NASDAQ", "중장기"]), {"search_stock", "set_research_context"})
+        conversation.state.horizon = Horizon.SHORT
+        self.assertIn("get_events", names(["005930", "KOSPI", "단기"]))
+
+    def test_unadvertised_fetch_before_horizon_is_not_executed(self):
+        conversation = OpenAIConversation(self.make_client([
+            [tool("set_research_context", {"code": "005930", "exchange": "KOSPI", "horizon": None}, "ctx")],
+            [tool("get_news", {}, "bad")],
+            [answer("어떤 관점인가요?")],
+        ]))
+        conversation.respond("삼전 어때?")
+        self.bundle.assert_not_called()
+        self.assertTrue(all(not any(tool["name"].startswith("get_") for tool in request["tools"])
+                            for request in self.requests))
+        self.assertIn("error", conversation.tool_calls[-1]["result"])
+
+    def test_pending_short_context_blocks_old_context_queries(self):
+        from mini_ai_agent.conversation import Horizon
+        conversation = OpenAIConversation(self.make_client([
+            [tool("get_events", {}, "premature")],
+            [tool("set_research_context", {"code": "005930", "exchange": "KOSPI", "horizon": "단기"}, "ctx")],
+            queries(True), [answer("단기 분석")],
+        ]))
+        conversation.state.code, conversation.state.exchange = "005930", "KOSPI"
+        conversation.state.horizon = Horizon.MEDIUM
+        conversation.respond("단기로는?")
+        self.earnings_events.assert_called_once()
+        self.assertEqual(self.earnings_events.call_args.args[1], "단기")
+        self.assertIn("error", conversation.tool_calls[0]["result"])
+        self.assertNotIn("get_events", {item["name"] for item in self.requests[0]["tools"]})
+        self.assertIn("get_events", {item["name"] for item in self.requests[2]["tools"]})
+
     def test_each_horizon_requires_its_own_financials(self):
         # 동일 종목이어도 관점이 바뀌면 요청 재무 범위가 4분기/3년/5년으로 바뀌어야 한다.
         from mini_ai_agent.market_data import policy
@@ -189,6 +231,14 @@ class LLMTests(unittest.TestCase):
         self.price_history.assert_called_once()
         self.assertEqual(self.bundle.call_count, 2)
         self.assertIn("get_financials", conversation.research["reused_tools"])
+        # 조회 순서 자체를 강제하지 않고, 재사용 목록과 부족한 자료를 정확히 전달한다.
+        context_result = conversation.tool_calls[0]["result"]
+        self.assertEqual(context_result["missing_tools"], ["get_news"])
+        self.assertIn("get_financials", context_result["research"]["reusable_tools"])
+        context_request = self.requests[3]
+        self.assertNotIn("get_financials", {tool["name"] for tool in context_request["tools"]})
+        after_context_request = self.requests[4]
+        self.assertIn("get_financials", {tool["name"] for tool in after_context_request["tools"]})
         conversation.respond("위험을 정리해줘")
         self.assertEqual(conversation.tool_calls, [])
         self.assertIn("현재 유효한 보유 자료", self.requests[-1]["instructions"])
@@ -228,10 +278,13 @@ class LLMTests(unittest.TestCase):
         self.analyze.return_value = {'status':'ok','rsi14':34.4,'macd_12_26_9':{'line':-2}}
         context = tool('set_research_context', {'code':'005930','exchange':'KOSPI','horizon':'단기'}, 'c1')
         text = '단기 모멘텀 약화에 유의해야 합니다.'
-        conversation = OpenAIConversation(self.make_client([[context], queries(True), [answer(text,[{'text':text,'source_ids':['c0s0','c1s0']}])]]))
+        # 단기 기준표에서 RSI는 0번, 다이버전스 두 항목 뒤의 MACD는 3번이다.
+        conversation = OpenAIConversation(self.make_client([[context], queries(True), [answer(text,[{'text':text,'source_ids':['c0s0','c3s0']}])]]))
         self.assertEqual(conversation.respond('삼성전자 단기로'),text)
         self.assertEqual(len(self.requests),3)
         self.assertEqual(conversation.coverage[0]['status'],'declared')
+        self.assertEqual(conversation.coverage[3]['status'],'declared')
+        self.assertEqual(conversation.coverage[1]['status'],'no_data')
         self.assertEqual(len(conversation.coverage[0]['claims'][0]['sources']),2)
         self.assertIn('34.4',self.requests[-1]['instructions'])
         self.assertEqual(self.requests[-1]['text']['format']['name'],'research_answer')
@@ -266,7 +319,8 @@ class LLMTests(unittest.TestCase):
             [context("AAPL", "c1")], [tool("get_financials", {}, "f1")],
             [context("TSLA", "c2")], queries(), [answer("테슬라")],
         ]))
-        conversation.respond("테슬라 장기")
+        # 목표 종목이 명시된 요청에서 엉뚱한 종목을 조회하는 검사는 별도로 한다.
+        conversation.respond("두 종목을 차례로 확인해줘")
         self.assertEqual([call.args[0]["code"] for call in self.finances.call_args_list], ["AAPL", "TSLA"])
         self.assertEqual(conversation.research["financials_context_key"], ["TSLA", "NASDAQ", "장기"])
 

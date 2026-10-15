@@ -12,7 +12,10 @@ from mini_ai_agent.conversation import Horizon, RESEARCH_FOCUS
 
 # 항목별 실제 제공 자료만 허용한다. 아직 수집하지 않는 자료는 빈 목록이다.
 SHORT_PATHS = [
-    ['technicals.rsi14'], ['technicals.macd_12_26_9'],
+    ['technicals.rsi14'],
+    ['technicals.rsi_divergence.bullish'], ['technicals.rsi_divergence.bearish'],
+    ['technicals.macd_12_26_9'],
+    ['technicals.macd_divergence.bullish'], ['technicals.macd_divergence.bearish'],
     ['prices.recent_bars', 'technicals.close', 'technicals.moving_averages'],
     ['technicals.momentum_returns_pct'], ['news.items'], ['technicals.volume'],
     ['technicals.support_resistance_proxy'], ['technicals.volatility_20_annualized_pct'],
@@ -70,6 +73,10 @@ def evidence_bank(criteria, research):
         def add(path, value, meta):
             # c8s0은 현재 체크리스트 8번 항목의 0번 자료라는 임시 ID다.
             # 종목에 영구 부여한 ID가 아니므로 다른 턴/관점의 ID를 재사용하면 안 된다.
+            # 지표 전체는 partial이어도 개별 다이버전스는 판단 불가일 수 있다.
+            # status/reason 문자열만 있는 결과를 실제 분석 근거로 올리지 않는다.
+            if isinstance(value, dict) and value.get('status') in {'unavailable', 'empty', 'not_requested'}:
+                return
             if meaningful(value):
                 records.append({'id': f'c{index}s{len(records)}', 'path': path, 'value': value,
                                 'source': meta.get('source', ''), 'as_of': meta.get('as_of', ''),

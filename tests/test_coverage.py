@@ -5,7 +5,7 @@
 """
 import unittest
 from mini_ai_agent.coverage import evidence_bank, declared_coverage, answer_schema, PATHS
-from mini_ai_agent.conversation import RESEARCH_FOCUS
+from mini_ai_agent.conversation import Horizon, RESEARCH_FOCUS
 
 
 class CoverageTests(unittest.TestCase):
@@ -62,6 +62,25 @@ class CoverageTests(unittest.TestCase):
 
     def test_every_criterion_has_explicit_mapping(self):
         self.assertTrue(all(item in PATHS for items in RESEARCH_FOCUS.values() for item in items))
+
+    def test_short_indicators_have_separate_divergence_evidence(self):
+        criteria = RESEARCH_FOCUS[Horizon.SHORT]
+        self.assertEqual(criteria[:6], ('RSI', 'RSI 상승다이버전스', 'RSI 하락다이버전스',
+                                       'MACD', 'MACD 상승다이버전스', 'MACD 하락다이버전스'))
+        bank = evidence_bank(criteria, {'technicals': {'status': 'partial', 'rsi14': 40,
+            'macd_12_26_9': {'line': -2},
+            'rsi_divergence': {'bullish': {'status': 'ok', 'detected': True},
+                               'bearish': {'status': 'ok', 'detected': False}},
+            'macd_divergence': {'bullish': {'status': 'unavailable', 'detected': None, 'reason': '부족'},
+                                'bearish': {'status': 'ok', 'detected': False}}}})
+        self.assertEqual([item['sources'][0]['path'] if item['sources'] else None for item in bank[:6]],
+                         ['technicals.rsi14', 'technicals.rsi_divergence.bullish', 'technicals.rsi_divergence.bearish',
+                          'technicals.macd_12_26_9', None, 'technicals.macd_divergence.bearish'])
+        # RSI 상승 판단을 사용해도 RSI 기본값이나 하락 판단을 사용했다고 자동 표시하지 않는다.
+        result = declared_coverage('상승 다이버전스 탐지',
+                                   [{'text': '상승 다이버전스 탐지', 'source_ids': ['c1s0']}], bank)
+        self.assertEqual([row['status'] for row in result[:6]],
+                         ['not_declared', 'declared', 'not_declared', 'not_declared', 'no_data', 'not_declared'])
 
     def test_schema_only_allows_current_source_ids(self):
         schema = answer_schema(self.bank)

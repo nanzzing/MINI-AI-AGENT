@@ -75,7 +75,8 @@ class Handler(BaseHTTPRequestHandler):
                     stock = matches[0]
                 else:
                     stock = stock_identity(params.get("code", [""])[0], params.get("exchange", [""])[0])
-                result = price_history(stock, horizon) if parsed.path == "/api/market" else financials(stock, horizon)
+                # 차트의 전체 이력과 모델/재무 분석에 쓰는 관점별 범위를 분리한다.
+                result = price_history(stock, full_history=True) if parsed.path == "/api/market" else financials(stock, horizon)
                 self.send_json(200, {"stock": stock, "data": result, "policy": policy(horizon)})
             except ValueError as error:
                 self.send_json(400, {"error": str(error)})

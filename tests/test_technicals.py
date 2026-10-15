@@ -3,7 +3,7 @@ import unittest
 from datetime import date
 import json
 import pandas as pd
-from mini_ai_agent.technicals import analyze
+from mini_ai_agent.technicals import analyze, _regular_divergence, _rsi_series
 
 
 def prices(flat=False):
@@ -52,5 +52,107 @@ class TechnicalTests(unittest.TestCase):
         self.assertIsNone(data['bullish_ma_alignment'])
         self.assertIsNone(data['rsi14'])
         self.assertIsNone(data['monthly_settlement']['satisfied'])
+        for key in ('rsi_divergence', 'macd_divergence'):
+            for direction in ('bullish', 'bearish'):
+                self.assertEqual(data[key][direction]['status'], 'unavailable')
+                self.assertIsNone(data[key][direction]['detected'])
         json.dumps(data, allow_nan=False)
         self.assertEqual(analyze({'bars': []})['status'], 'unavailable')
+
+    def test_rsi_series_preserves_wilder_seed_and_smoothing(self):
+        close = pd.Series([100 + i + 3 * (-1)**i for i in range(40)], dtype=float)
+        series = _rsi_series(close)
+        self.assertTrue(series.iloc[:14].isna().all())
+        # 기존 최신값 계산식과 각 날짜 결과를 비교해 전체 이력으로 바꿔도 값이 같은지 검사한다.
+        for end in range(15, len(close)+1):
+            delta = close.iloc[:end].diff().dropna()
+            gain, loss = delta.clip(lower=0), -delta.clip(upper=0)
+            avg_gain, avg_loss = gain.iloc[:14].mean(), loss.iloc[:14].mean()
+            for g, l in zip(gain.iloc[14:], loss.iloc[14:]):
+                avg_gain, avg_loss = (avg_gain * 13 + g) / 14, (avg_loss * 13 + l) / 14
+            self.assertAlmostEqual(series.iloc[end-1], 100 - 100 / (1 + avg_gain / avg_loss))
+
+    def test_analysis_divergences_use_completed_bars_and_correct_indicator(self):
+        source = prices()
+        for index, bar in enumerate(source['bars']):
+            close = 100 + (index % 20 - 10)**2
+            bar.update(close=close, high=close+1, low=close-1)
+        today = date(2025, 10, 15)
+        data = analyze(source, today)
+        frame = pd.DataFrame(source['bars'][:-1])
+        close = frame.close.astype(float)
+        series = {'rsi_divergence': _rsi_series(close), 'macd_divergence':
+                  close.ewm(span=12, adjust=False, min_periods=12).mean()
+                  - close.ewm(span=26, adjust=False, min_periods=26).mean()}
+        for key, indicator in series.items():
+            for direction in ('bullish', 'bearish'):
+                result = data[key][direction]
+                self.assertEqual(result['status'], 'ok')
+                for pivot in result['pivots']:
+                    index = frame.index[frame.time == pivot['time']][0]
+                    self.assertEqual(pivot['indicator'], round(indicator.iloc[index], 6))
+                    self.assertLess(pivot['confirmed_at'], today.isoformat())
+        source['bars'][-1].update(close=100000, high=100000, low=0)
+        new = analyze(source, today)
+        for key in series:
+            self.assertEqual(new[key], data[key])
+        json.dumps(data, allow_nan=False)
+
+
+class DivergenceTests(unittest.TestCase):
+    def fixture(self, direction='bullish', count=22):
+        # 지표 계산과 전환점 판정을 분리해 두 저점/고점의 조건을 직접 검사한다.
+        frame = pd.DataFrame({'time': pd.bdate_range('2025-01-01', periods=count).strftime('%Y-%m-%d'),
+                              'low': [10.0]*count, 'high': [20.0]*count})
+        indicator = pd.Series([50.0]*count)
+        field = 'low' if direction == 'bullish' else 'high'
+        frame.loc[[4, 12], field] = [9, 8] if direction == 'bullish' else [21, 22]
+        indicator.iloc[[4, 12]] = [30, 40] if direction == 'bullish' else [70, 60]
+        return frame, indicator, field
+
+    def test_regular_bullish_and_bearish(self):
+        for direction in ('bullish', 'bearish'):
+            with self.subTest(direction=direction):
+                frame, indicator, field = self.fixture(direction)
+                result = _regular_divergence(frame, indicator, direction)
+                self.assertEqual(result['status'], 'ok')
+                self.assertIs(result['detected'], True)
+                self.assertEqual(result['price_field'], field)
+                self.assertEqual([p['time'] for p in result['pivots']], frame.time.iloc[[4, 12]].tolist())
+                self.assertEqual(result['pivots'][1]['confirmed_at'], frame.time.iloc[15])
+                self.assertEqual(result['sessions_since_confirmation'], 6)
+
+    def test_equal_or_same_direction_moves_are_not_divergence(self):
+        for direction in ('bullish', 'bearish'):
+            for case in ('equal_price', 'equal_indicator', 'same_direction'):
+                with self.subTest(direction=direction, case=case):
+                    frame, indicator, field = self.fixture(direction)
+                    if case == 'equal_price':
+                        frame.loc[12, field] = frame.loc[4, field]
+                    else:
+                        indicator.iloc[12] = indicator.iloc[4] + (0 if case == 'equal_indicator' else -10 if direction == 'bullish' else 10)
+                    result = _regular_divergence(frame, indicator, direction)
+                    self.assertEqual(result['status'], 'ok')
+                    self.assertIs(result['detected'], False)
+
+    def test_latest_unconfirmed_pivot_is_excluded_then_replaces_old_pair(self):
+        frame, indicator, _ = self.fixture(count=24)
+        frame.loc[20, 'low'], indicator.iloc[20] = 7, 20
+        before = _regular_divergence(frame.iloc[:22], indicator.iloc[:22], 'bullish')
+        self.assertIs(before['detected'], True)
+        confirmed = _regular_divergence(frame, indicator, 'bullish')
+        self.assertIs(confirmed['detected'], False)
+        self.assertEqual([p['time'] for p in confirmed['pivots']], frame.time.iloc[[12, 20]].tolist())
+
+    def test_old_pivots_plateaus_and_missing_indicator_are_unavailable(self):
+        frame, indicator, _ = self.fixture(count=150)
+        self.assertIsNone(_regular_divergence(frame, indicator, 'bullish')['detected'])
+        frame, indicator, _ = self.fixture()
+        frame.loc[13, 'low'] = frame.loc[12, 'low']
+        self.assertIsNone(_regular_divergence(frame, indicator, 'bullish')['detected'])
+        frame, indicator, _ = self.fixture()
+        indicator.iloc[12] = float('nan')
+        result = _regular_divergence(frame, indicator, 'bullish')
+        self.assertEqual(result['status'], 'unavailable')
+        self.assertIsNone(result['detected'])
+        json.dumps(result, allow_nan=False)

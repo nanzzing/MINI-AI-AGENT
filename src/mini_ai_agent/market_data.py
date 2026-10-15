@@ -78,13 +78,15 @@ def meta(source, status="ok", **values):
     return {"source": source, "status": status, "fetched_at": datetime.now(timezone.utc).isoformat(), **values}
 
 
-def price_history(stock, horizon=None):
+def price_history(stock, horizon=None, *, full_history=False):
     """모델과 차트가 공유하는 OHLCV 일봉을 반환한다. OHLC는 시가·고가·저가·종가다.
 
     Yahoo의 pandas 표를 JSON으로 전송 가능한 dict 목록으로 바꾼다.
     조정 가격이므로 배당·분할 전 원래 거래 가격 또는 실시간 호가와 같지 않을 수 있다.
     """
-    period = policy(horizon)["price_period"]
+    # 화면 차트는 투자 관점과 무관하게 공급자의 전체 이력을 사용한다.
+    # 모델 분석은 기존 관점별 기간을 유지하며, 캐시도 period별로 분리된다.
+    period = "max" if full_history else policy(horizon)["price_period"]
 
     def fetch():
         try:

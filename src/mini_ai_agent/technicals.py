@@ -6,6 +6,9 @@ import math
 import pandas as pd
 
 
+SHORT_INDICATOR_WINDOWS = (20, 40)
+
+
 def _rsi_series(close, period=14):
     """Wilder RSI의 전체 이력. 최신 값뿐 아니라 과거 전환점의 RSI도 비교한다."""
     result = pd.Series(float('nan'), index=close.index, dtype=float)
@@ -22,20 +25,51 @@ def _rsi_series(close, period=14):
     return result
 
 
-def _regular_divergence(frame, indicator, direction, *, lookback=120, pivot_window=3):
+def _recent_indicator_summary(frame, indicators):
+    """지표 계산은 전체 이력으로, 단기 해석용 요약은 최근 20/40거래일로 분리한다."""
+    windows = {}
+    for lookback in SHORT_INDICATOR_WINDOWS:
+        recent = frame.iloc[-lookback:]
+        values = {}
+        for name, series in indicators.items():
+            samples = series.iloc[-lookback:]
+            finite = samples[samples.map(math.isfinite)]
+            values[name] = {
+                'valid_sessions': len(finite),
+                'first': round(float(samples.iloc[0]), 6) if math.isfinite(samples.iloc[0]) else None,
+                'latest': round(float(samples.iloc[-1]), 6) if math.isfinite(samples.iloc[-1]) else None,
+                'min': round(float(finite.min()), 6) if len(finite) else None,
+                'max': round(float(finite.max()), 6) if len(finite) else None,
+            }
+        counts = [item['valid_sessions'] for item in values.values()]
+        windows[str(lookback)] = {
+            'status': 'ok' if all(count == lookback for count in counts) else 'partial' if any(counts) else 'unavailable',
+            'sessions_examined': len(recent), 'from': recent.time.iloc[0], 'to': recent.time.iloc[-1],
+            'values': values,
+        }
+    statuses = [window['status'] for window in windows.values()]
+    return {
+        'status': 'ok' if all(status == 'ok' for status in statuses) else 'unavailable' if all(status == 'unavailable' for status in statuses) else 'partial',
+        'method': '최근 20거래일 중심, 40거래일은 보조 비교. 지표 계산용 과거 이력과 해석 구간은 별개.',
+        'windows': windows,
+    }
+
+
+def _regular_divergence(frame, indicator, direction, *, lookback=40, pivot_window=3):
     """최근 두 확정 가격 전환점에서 지표를 비교하는 일반 다이버전스 규칙.
 
     상승은 저가의 낮아진 저점과 지표의 높아진 값, 하락은 고가의 높아진 고점과
     지표의 낮아진 값을 찾는다. 지표의 독립적인 극점을 찾거나 히든 다이버전스를
-    계산하는 방식은 아니다. 탐지 규칙을 결과에도 넣어 모델이 범위를 알게 한다.
+    계산하는 방식은 아니다. 20거래일에 전환점이 부족할 때만 최대 40거래일까지
+    넓힌다. 조건이 False라는 이유로 과거의 다른 쌍을 찾아 신호를 만들지는 않는다.
     """
     bullish = direction == 'bullish'
     price_field = 'low' if bullish else 'high'
+    preferred = min(SHORT_INDICATOR_WINDOWS[0], lookback)
     result = {
         'status': 'unavailable', 'detected': None, 'direction': direction,
-        'lookback_sessions': lookback, 'sessions_examined': min(lookback, len(frame)),
+        'preferred_lookback_sessions': preferred, 'max_lookback_sessions': lookback,
         'pivot_window': pivot_window, 'price_field': price_field,
-        'method': f'최근 {lookback}거래일 안의 마지막 두 가격 전환점 비교. 전후 {pivot_window}봉보다 엄격한 저점/고점만 확정. 지표는 같은 날짜 값.',
         'rule': '가격 저점 하락 + 지표 값 상승' if bullish else '가격 고점 상승 + 지표 값 하락',
         'pivots': [],
     }
@@ -49,6 +83,18 @@ def _regular_divergence(frame, indicator, direction, *, lookback=120, pivot_wind
         neighbors = [*window[:pivot_window], *window[pivot_window+1:]]
         if (all(prices[index] < p for p in neighbors) if bullish else all(prices[index] > p for p in neighbors)):
             pivots.append(index)
+    recent_pivots = [index for index in pivots if index >= len(frame)-preferred]
+    expanded = len(recent_pivots) < 2 and lookback > preferred and len(frame) > preferred
+    selected = lookback if expanded else preferred
+    if not expanded:
+        pivots = recent_pivots
+    result.update(
+        lookback_sessions=selected, sessions_examined=min(selected, len(frame)),
+        window_start=frame.time.iloc[max(0, len(frame)-selected)] if len(frame) else None,
+        window_end=frame.time.iloc[-1] if len(frame) else None,
+        expanded_for_insufficient_pivots=expanded,
+        method=f'최근 {preferred}거래일 우선, 확정 가격 전환점이 2개 미만일 때만 최대 {lookback}거래일로 확대. 선택한 {selected}거래일 안의 마지막 두 전환점 비교. 전후 {pivot_window}봉보다 엄격한 저점/고점만 확정. 지표는 같은 날짜 값.',
+    )
     result['confirmed_pivot_count'] = len(pivots)
     if len(pivots) < 2:
         result['reason'] = '비교할 확정 가격 전환점이 2개 미만입니다.'
@@ -113,6 +159,8 @@ def analyze(prices, today=None):
     ordered = all(a > b for a, b in zip(values, values[1:])) if all(v is not None for v in values) else None
     # 정배열은 20 > 60 > 120 > 200을 모두 충족해야 True다. 데이터 부족은 False와 다르다.
 
+    # 계산 이력을 20/40일로 자르면 Wilder/EMA 초기값이 달라진다. 전체 이력으로
+    # 먼저 계산한 뒤 아래 요약과 다이버전스에서 해석에 사용할 최근 구간만 고른다.
     # Wilder RSI: 첫 14개 변화의 단순평균으로 시작하고 이후 1/14로 평활한다.
     rsi_history = _rsi_series(close)
     rsi = value(rsi_history.iloc[-1])
@@ -148,6 +196,8 @@ def analyze(prices, today=None):
             "bars_used": len(frame), "close": value(last), "moving_averages": ma, "bullish_ma_alignment": ordered,
             "momentum_returns_pct": {str(w): change(close, w) for w in (5, 20, 60, 120, 252)},
             "rsi14": rsi, "macd_12_26_9": {"line": value(macd.iloc[-1]), "signal": value(signal.iloc[-1]), "histogram": value((macd-signal).iloc[-1])},
+            "rsi_recent": _recent_indicator_summary(frame, {'rsi14': rsi_history}),
+            "macd_recent": _recent_indicator_summary(frame, {'line': macd, 'signal': signal, 'histogram': macd-signal}),
             "rsi_divergence": {direction: _regular_divergence(frame, rsi_history, direction) for direction in ('bullish', 'bearish')},
             "macd_divergence": {direction: _regular_divergence(frame, macd, direction) for direction in ('bullish', 'bearish')},
             "bollinger_20_2": {"upper": value(upper.iloc[-1]), "middle": value(middle.iloc[-1]), "lower": value(lower.iloc[-1]), "position": band_position},

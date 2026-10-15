@@ -12,9 +12,9 @@ from mini_ai_agent.conversation import Horizon, RESEARCH_FOCUS
 
 # 항목별 실제 제공 자료만 허용한다. 아직 수집하지 않는 자료는 빈 목록이다.
 SHORT_PATHS = [
-    ['technicals.rsi14'],
+    ['technicals.rsi14', 'technicals.rsi_recent'],
     ['technicals.rsi_divergence.bullish'], ['technicals.rsi_divergence.bearish'],
-    ['technicals.macd_12_26_9'],
+    ['technicals.macd_12_26_9', 'technicals.macd_recent'],
     ['technicals.macd_divergence.bullish'], ['technicals.macd_divergence.bearish'],
     ['prices.recent_bars', 'technicals.close', 'technicals.moving_averages'],
     ['technicals.momentum_returns_pct'], ['news.items'], ['technicals.volume'],

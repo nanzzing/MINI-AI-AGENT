@@ -30,6 +30,9 @@ SOURCES = (
 ALIASES = {"삼전": "005930", "애플": "AAPL", "테슬라": "TSLA", "엔비디아": "NVDA"}
 # 별칭은 편의 검색용 일부 예시다. 이 사전에 없는 종목도 아래 전체 카탈로그에서
 # 정식 이름이나 티커로 검색된다. 따라서 삼성전자 전용 서비스인 것은 아니다.
+# 기술 지표와 겹치는 영문 약어는 채팅의 종목 전환을 강제하는 근거로 쓰지 않는다.
+# 실제 해당 종목을 검색하는 도구/검색창에서는 그대로 검색할 수 있다.
+INDICATOR_TICKERS = {"rsi", "macd", "ma", "sma", "ema", "atr", "adx", "obv", "cci", "roc"}
 
 
 def parse_master(content: str, exchange: str, tail_length: int | None) -> list[dict]:
@@ -97,13 +100,27 @@ def load_catalog() -> dict:
     return json.loads(CATALOG.read_text(encoding="utf-8"))
 
 
-def find_stocks(message: str) -> list[dict]:
-    """별칭·코드 일치를 먼저 찾고, 없으면 메시지에 포함된 종목명을 찾는다."""
+def find_stocks(message: str, *, allow_indicator_tickers: bool = True) -> list[dict]:
+    """별칭·코드·종목명을 찾는다. 채팅 자동 판정은 지표와 겹치는 티커를 제외한다.
+
+    명시적인 종목 검색은 기본값 True를 사용한다. 채팅에서는 False로 호출하되
+    '$RSI', '티커 RSI', 'NYSE:RSI'처럼 종목임을 명시한 표기는 계속 허용한다.
+    """
     normalized = message.casefold()
     # 대소문자 차이만 정규화한다. 오타 교정·의미 검색·외부 검색은 하지 않는 규칙 검색이다.
     # 반환 타입을 항상 리스트로 유지해 0개/1개/여러 후보를 호출자가 구분할 수 있게 한다.
     # 티커 중간의 점·하이픈 등은 유지한다. 별칭도 코드 후보로 바꾸어 같은 검색에 사용한다.
     codes = set(re.findall(r"(?<![a-z0-9])[a-z0-9]+(?:[.\-/][a-z0-9]+)*(?![a-z0-9])", normalized))
+    if not allow_indicator_tickers:
+        exchanges = r"(?:nyse(?:\s+american)?|nasdaq|amex|kospi|kosdaq|konex)"
+        for code in codes & INDICATOR_TICKERS:
+            ticker = re.escape(code)
+            explicit = (
+                rf"(?<![a-z0-9])(?:\$\s*|(?:티커|종목\s*코드|ticker|symbol)\s*[:=]?\s*|{exchanges}\s*:\s*){ticker}(?![a-z0-9])"
+                rf"|(?<![a-z0-9]){ticker}\s*\(\s*{exchanges}\s*\)"
+            )
+            if not re.search(explicit, normalized):
+                codes.remove(code)
     for alias, code in ALIASES.items():
         if alias in normalized:
             codes.add(code.casefold())

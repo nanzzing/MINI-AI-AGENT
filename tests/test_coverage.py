@@ -86,3 +86,17 @@ class CoverageTests(unittest.TestCase):
         schema = answer_schema(self.bank)
         self.assertEqual(schema['properties']['sections']['items']['properties']['source_ids']['items']['enum'], ['c0s0','c1s0'])
         self.assertNotIn('enum',answer_schema([])['properties']['sections']['items']['properties']['source_ids']['items'])
+
+    def test_recent_indicator_windows_are_available_as_separate_evidence(self):
+        for status in ('ok', 'partial', 'unavailable'):
+            with self.subTest(status=status):
+                recent = {'status': status, 'windows': {'20': {'values': {'latest': 45}}}}
+                bank = evidence_bank(['RSI', 'MACD'], {'technicals': {
+                    'status': 'partial', 'rsi14': 45, 'macd_12_26_9': {'line': -2},
+                    'rsi_recent': recent, 'macd_recent': recent}})
+                for index, key in enumerate(('rsi_recent', 'macd_recent')):
+                    sources = bank[index]['sources']
+                    self.assertEqual(len(sources), 1 if status == 'unavailable' else 2)
+                    if status != 'unavailable':
+                        self.assertEqual(sources[1]['path'], f'technicals.{key}')
+                        self.assertEqual(sources[1]['value'], recent)

@@ -52,6 +52,10 @@ class TechnicalTests(unittest.TestCase):
         self.assertIsNone(data['bullish_ma_alignment'])
         self.assertIsNone(data['rsi14'])
         self.assertIsNone(data['monthly_settlement']['satisfied'])
+        for key in ('rsi_recent', 'macd_recent'):
+            self.assertEqual(data[key]['status'], 'unavailable')
+            for window in data[key]['windows'].values():
+                self.assertEqual(window['sessions_examined'], 5)
         for key in ('rsi_divergence', 'macd_divergence'):
             for direction in ('bullish', 'bearish'):
                 self.assertEqual(data[key][direction]['status'], 'unavailable')
@@ -88,6 +92,8 @@ class TechnicalTests(unittest.TestCase):
             for direction in ('bullish', 'bearish'):
                 result = data[key][direction]
                 self.assertEqual(result['status'], 'ok')
+                self.assertIn(result['lookback_sessions'], (20, 40))
+                self.assertEqual(result['max_lookback_sessions'], 40)
                 for pivot in result['pivots']:
                     index = frame.index[frame.time == pivot['time']][0]
                     self.assertEqual(pivot['indicator'], round(indicator.iloc[index], 6))
@@ -96,6 +102,55 @@ class TechnicalTests(unittest.TestCase):
         new = analyze(source, today)
         for key in series:
             self.assertEqual(new[key], data[key])
+        json.dumps(data, allow_nan=False)
+
+    def test_recent_summaries_limit_interpretation_but_preserve_full_indicator_calculation(self):
+        source = prices()
+        for index, bar in enumerate(source['bars']):
+            bar['close'] = 100 + index * 0.1 + 15 * (-1)**(index // 9)
+        frame = pd.DataFrame(source['bars'][:-1])
+        close = frame.close.astype(float)
+        rsi = _rsi_series(close)
+        macd = close.ewm(span=12, adjust=False, min_periods=12).mean() - close.ewm(span=26, adjust=False, min_periods=26).mean()
+        signal = macd.ewm(span=9, adjust=False, min_periods=9).mean()
+        indicators = {'rsi_recent': {'rsi14': rsi}, 'macd_recent': {'line': macd, 'signal': signal, 'histogram': macd-signal}}
+        data = analyze(source, date(2025, 10, 15))
+        self.assertEqual(data['rsi14'], round(rsi.iloc[-1], 6))
+        self.assertEqual(data['macd_12_26_9']['line'], round(macd.iloc[-1], 6))
+        self.assertEqual(data['bars_used'], len(frame))
+        for key, series_by_name in indicators.items():
+            self.assertEqual(data[key]['status'], 'ok')
+            self.assertEqual(set(data[key]['windows']), {'20', '40'})
+            for size in (20, 40):
+                window = data[key]['windows'][str(size)]
+                self.assertEqual(window['from'], frame.time.iloc[-size])
+                self.assertEqual(window['to'], frame.time.iloc[-1])
+                self.assertEqual(window['sessions_examined'], size)
+                for name, series in series_by_name.items():
+                    recent = series.iloc[-size:]
+                    self.assertEqual(window['values'][name], {
+                        'valid_sessions': size, 'first': round(recent.iloc[0], 6),
+                        'latest': round(recent.iloc[-1], 6), 'min': round(recent.min(), 6),
+                        'max': round(recent.max(), 6)})
+        # 분석 범위가 짧아져도 SMA200과 RSI/MACD 준비 이력을 잘라내지 않는다.
+        self.assertEqual(data['moving_averages']['200']['value'], round(close.iloc[-200:].mean(), 6))
+        self.assertNotEqual(data['rsi14'], round(_rsi_series(close.iloc[-40:]).iloc[-1], 6))
+        source['bars'][-1]['close'] = 100000
+        changed = analyze(source, date(2025, 10, 15))
+        for key in indicators:
+            self.assertEqual(changed[key], data[key])
+
+    def test_recent_summaries_report_warmup_and_missing_sessions(self):
+        source = prices()
+        source['bars'] = source['bars'][:30]
+        data = analyze(source, date(2025, 10, 15))
+        self.assertEqual(data['rsi_recent']['status'], 'partial')
+        self.assertEqual(data['rsi_recent']['windows']['20']['values']['rsi14']['valid_sessions'], 16)
+        self.assertEqual(data['rsi_recent']['windows']['40']['sessions_examined'], 30)
+        macd = data['macd_recent']['windows']['20']['values']
+        self.assertEqual(macd['line']['valid_sessions'], 5)
+        self.assertEqual(macd['signal']['valid_sessions'], 0)
+        self.assertIsNone(macd['signal']['latest'])
         json.dumps(data, allow_nan=False)
 
 
@@ -116,6 +171,8 @@ class DivergenceTests(unittest.TestCase):
                 frame, indicator, field = self.fixture(direction)
                 result = _regular_divergence(frame, indicator, direction)
                 self.assertEqual(result['status'], 'ok')
+                self.assertEqual(result['lookback_sessions'], 20)
+                self.assertFalse(result['expanded_for_insufficient_pivots'])
                 self.assertIs(result['detected'], True)
                 self.assertEqual(result['price_field'], field)
                 self.assertEqual([p['time'] for p in result['pivots']], frame.time.iloc[[4, 12]].tolist())
@@ -156,3 +213,42 @@ class DivergenceTests(unittest.TestCase):
         self.assertEqual(result['status'], 'unavailable')
         self.assertIsNone(result['detected'])
         json.dumps(result, allow_nan=False)
+
+    def test_expands_to_40_only_when_recent_20_lacks_two_pivots(self):
+        for direction in ('bullish', 'bearish'):
+            with self.subTest(direction=direction):
+                # 마지막 20일에는 12번 전환점만, 40일에는 4번과 12번이 모두 있다.
+                frame, indicator, _ = self.fixture(direction, count=30)
+                result = _regular_divergence(frame, indicator, direction)
+                self.assertIs(result['detected'], True)
+                self.assertEqual(result['lookback_sessions'], 40)
+                self.assertEqual(result['sessions_examined'], 30)
+                self.assertTrue(result['expanded_for_insufficient_pivots'])
+
+    def test_negative_or_missing_indicator_does_not_expand_to_seek_old_signal(self):
+        frame, indicator, _ = self.fixture(count=24)
+        frame.loc[20, 'low'], indicator.iloc[20] = 7, 20
+        for reading in (20, float('nan')):
+            with self.subTest(reading=reading):
+                indicator.iloc[20] = reading
+                result = _regular_divergence(frame, indicator, 'bullish')
+                self.assertEqual(result['lookback_sessions'], 20)
+                self.assertFalse(result['expanded_for_insufficient_pivots'])
+                self.assertEqual([p['time'] for p in result['pivots']], frame.time.iloc[[12, 20]].tolist())
+                self.assertIsNot(result['detected'], True)
+
+    def test_40_session_boundary_excludes_old_pivots_even_when_only_one_remains(self):
+        for direction in ('bullish', 'bearish'):
+            for first in (39, 40):
+                with self.subTest(direction=direction, first=first):
+                    frame, indicator, field = self.fixture(direction, count=80)
+                    frame.loc[[first, 60], field] = [9, 8] if direction == 'bullish' else [21, 22]
+                    indicator.iloc[[first, 60]] = [30, 40] if direction == 'bullish' else [70, 60]
+                    result = _regular_divergence(frame, indicator, direction)
+                    self.assertEqual(result['lookback_sessions'], 40)
+                    self.assertEqual(result['window_start'], frame.time.iloc[40])
+                    self.assertEqual(result['window_end'], frame.time.iloc[79])
+                    self.assertEqual(result['confirmed_pivot_count'], 2 if first == 40 else 1)
+                    self.assertIs(result['detected'], True if first == 40 else None)
+                    for pivot in result['pivots']:
+                        self.assertGreaterEqual(pivot['time'], frame.time.iloc[40])

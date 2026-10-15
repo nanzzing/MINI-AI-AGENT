@@ -17,6 +17,30 @@ class StockTests(unittest.TestCase):
         # 종목명이 일부 겹쳐도 보통주와 우선주를 혼동하지 않아야 한다.
         self.assertEqual(find_stocks("삼성전자우 어때?")[0]["code"], "005935")
 
+    def test_indicator_mentions_do_not_force_a_stock_change(self):
+        for message in ("하락 rsi 다이버전스 없는거아니야 ? (단기 관점)", "RSI는?", "RSI", "MA 기울기는?"):
+            with self.subTest(message=message):
+                self.assertEqual(find_stocks(message, allow_indicator_tickers=False), [])
+        for message, code in (("삼성전자 RSI 어때?", "005930"), ("삼전 RSI 분석", "005930"),
+                              ("삼성전자우 RSI", "005935"), ("AAPL RSI 확인", "AAPL")):
+            self.assertEqual([row['code'] for row in find_stocks(message, allow_indicator_tickers=False)], [code])
+
+    def test_explicit_indicator_named_stock_is_still_searchable(self):
+        self.assertEqual(find_stocks("RSI")[0]["code"], "RSI")
+        for query in ("$RSI 단기", "티커 RSI 단기", "종목코드 rsi", "NYSE:RSI 단기", "RSI (NYSE)"):
+            with self.subTest(query=query):
+                self.assertEqual([row['code'] for row in find_stocks(query, allow_indicator_tickers=False)], ["RSI"])
+        name = find_stocks("RSI")[0]["name"]
+        self.assertEqual(find_stocks(name, allow_indicator_tickers=False)[0]['code'], 'RSI')
+
+    def test_rule_based_followup_keeps_stock_until_explicit_change(self):
+        conversation = InvestmentConversation()
+        conversation.respond("삼성전자 단기")
+        conversation.respond("하락 RSI 다이버전스는?")
+        self.assertEqual(conversation.state.code, "005930")
+        conversation.respond("티커 RSI 단기")
+        self.assertEqual(conversation.state.code, "RSI")
+
     def test_us_ticker_and_exchange_reach_conversation(self):
         # 검색 결과의 코드·거래소가 대화 상태에 반영되고 종목 변경도 가능한지 본다.
         conversation = InvestmentConversation()

@@ -261,6 +261,28 @@ class LLMTests(unittest.TestCase):
         conversation.prune_resources(conversation.state, resources)
         self.assertNotIn("financials", resources)
 
+    def test_rsi_followup_preserves_samsung_and_uses_existing_evidence(self):
+        # RSI는 지표 이름이면서 실제 미국 주식 티커이기도 하다. 후속 질문에서
+        # 서버가 RSI 종목으로 강제 전환하면 올바른 삼성전자 답변도 12회 거절한다.
+        self.price_history.return_value = {"status": "ok", "bars": []}
+        self.finances.return_value = {"status": "partial", "statements": {}}
+        self.analyze.return_value = {"status": "ok", "rsi14": 34.4,
+                                     "rsi_divergence": {"bearish": {"status": "ok", "detected": False}}}
+        context = tool("set_research_context", {"code": "005930", "exchange": "KOSPI", "horizon": "단기"}, "ctx")
+        text = "현재 비교 쌍에서는 RSI 하락다이버전스가 탐지되지 않았습니다."
+        followup = answer(text, [{"text": text, "source_ids": ["c2s0"]}])
+        conversation = OpenAIConversation(self.make_client(
+            [[context], queries(True), [answer("삼성전자 단기 분석입니다.")]] + [[followup] for _ in range(12)]))
+        conversation.respond("삼성전자 단기")
+        self.assertEqual(conversation.respond("하락 rsi 다이버전스 없는거아니야 ? (단기 관점)"), text)
+        self.assertEqual(conversation.state.code, "005930")
+        self.assertEqual(len(self.requests), 4)
+        self.assertNotIn("tool_choice", self.requests[-1])
+        self.assertEqual(conversation.tool_calls, [])
+        self.assertEqual(conversation.coverage[2]["status"], "declared")
+        self.price_history.assert_called_once()
+        self.finances.assert_called_once()
+
     def test_explicit_stock_and_horizon_cannot_skip_context(self):
         # 모델이 처음부터 분석 초안을 내더라도 서버가 종목/관점 저장을 먼저 요구한다.
         conversation = OpenAIConversation(self.make_client([

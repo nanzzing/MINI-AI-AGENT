@@ -350,9 +350,10 @@ class OpenAIConversation:
             history.append({"role": "user", "content": message})
             # 명확한 입력은 로컬 목록과 대조해 최종 답변의 문맥 누락을 검사한다.
             # 복수 후보와 복수 관점은 여기서 임의로 확정하지 않는다.
-            matches = find_stocks(message)
+            matches = find_stocks(message, allow_indicator_tickers=False)
             # 서버의 로컬 사전 확인이다. 모델의 search_stock 요청이 아니므로 로그 횟수에
             # 표시되지 않는다. 일반 대화나 모호한 입력 전체를 분류하는 의도 인식기는 아니다.
+            # 'RSI 하락 다이버전스'를 NYSE의 RSI 종목으로 오인해 종목 변경을 강제하지 않는다.
             requested_horizon = detect_horizon(message)
             expected_context = None
             if len(matches) == 1:

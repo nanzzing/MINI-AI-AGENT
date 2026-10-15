@@ -87,7 +87,7 @@ def detect_horizon(message: str) -> Horizon | None:
 
 def detect_company(message: str) -> str | None:
     """검색 결과가 하나일 때만 종목명을 반환하는 규칙 기반 보조 함수."""
-    matches = find_stocks(message)
+    matches = find_stocks(message, allow_indicator_tickers=False)
     return matches[0]["name"] if len(matches) == 1 else None
 
 
@@ -106,7 +106,7 @@ class InvestmentConversation:
             return "새로운 조사를 시작할게요. 어떤 종목이 궁금한가요?"
 
         # 새 입력에 있는 정보만 갱신한다. '장기'만 답해도 이전 종목은 유지된다.
-        matches = find_stocks(message)
+        matches = find_stocks(message, allow_indicator_tickers=False)
         horizon = detect_horizon(message)
         if horizon:
             self.state.horizon = horizon

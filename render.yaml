@@ -1,0 +1,11 @@
+services:
+  # Render Blueprint용 배포 설정. API 키 값은 이 파일이 아니라 서비스 Environment에 둔다.
+  - type: web
+    name: mini-ai-agent
+    runtime: python
+    plan: free
+    buildCommand: pip install .
+    # 외부 요청을 받으려면 0.0.0.0에 바인딩한다. 포트는 server.py가 PORT 환경변수로 읽는다.
+    startCommand: python -m mini_ai_agent.server --host 0.0.0.0
+    healthCheckPath: /api/status
+    # 서버가 응답하는지 확인하는 경로이며 OpenAI 키 인증 성공까지 검사하지는 않는다.

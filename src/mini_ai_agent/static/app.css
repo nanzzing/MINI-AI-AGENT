@@ -1,2 +1,904 @@
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap');
-:root{font-family:'Noto Sans KR',Arial,sans-serif;color:#202622;background:#f5f6f7;font-size:14px;letter-spacing:0;--green:#187454;--line:#e5e8e7}*{box-sizing:border-box}body{margin:0}button,a,textarea{-webkit-tap-highlight-color:transparent}button,textarea{font:inherit}button{cursor:pointer}button:disabled{cursor:wait;opacity:.5}button:focus-visible,a:focus-visible{outline:2px solid var(--green);outline-offset:3px}svg{width:18px;height:18px;stroke-width:1.7;flex-shrink:0}.workspace{display:grid;grid-template-columns:218px minmax(0,1fr);min-height:100vh}.sidebar{background:#fff;border-right:1px solid var(--line);padding:32px 22px;display:flex;flex-direction:column}.brand{display:flex;align-items:center;gap:10px;color:#202622;text-decoration:none;font-size:30px;font-weight:800}.brand-symbol{display:flex;background:var(--green);color:#fff;padding:7px;border-radius:6px}.brand-symbol svg{width:23px;height:23px}.brand-dot{color:var(--green);margin-left:-9px}.brand-sub{font-size:8px;color:#8a938e;margin-top:9px}.new-chat{display:flex;align-items:center;justify-content:center;gap:9px;background:#fff;border:1px solid #ccd4d0;border-radius:5px;padding:12px;margin:34px 0;color:#293b32}.new-chat:hover{background:#f1f7f4}.nav-label{font-size:10px;color:#929b96;margin-bottom:16px}.nav-active{display:flex;align-items:center;gap:10px;padding:12px 10px;background:#eaf3ee;color:var(--green);border-radius:5px;font-weight:600;font-size:12px}.nav-mark{width:5px;height:5px;border-radius:50%;background:var(--green);margin-left:auto}.sidebar-section{margin-top:35px;border-top:1px solid var(--line);padding-top:24px;font-size:12px}.sidebar-section small{display:block;color:#949c97;margin-top:9px}.sidebar-bottom{margin-top:auto;padding-top:60px;font-size:10px;color:#68776e}.sidebar-bottom small{display:block;font-size:9px;color:#a0a7a2;margin-top:8px}.status-dot{display:inline-block;width:6px;height:6px;background:#288c67;border-radius:50%;margin-right:6px}main{min-width:0;padding:0 38px;max-width:1600px;width:100%;margin:auto}.topbar{height:73px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;font-size:11px}.breadcrumb{color:#8d9690}.slash{margin:0 13px;color:#bdc4bf}.connection{font-size:10px;color:#76847b}.page-heading{display:flex;align-items:center;justify-content:space-between;padding:30px 0 25px}.eyebrow{font-size:9px;color:var(--green);font-weight:600;margin-bottom:9px}h1{font-size:25px;margin:0;font-weight:700}p{line-height:1.7}.page-heading p{margin:9px 0 0;font-size:12px;color:#8b948e}.mode-badge{display:flex;align-items:center;gap:6px;border:1px solid #dfdcd1;color:#8b7b51;background:#faf8f1;padding:7px 10px;border-radius:4px;font-size:10px}.mode-badge svg{width:13px;height:13px}.desk{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:24px;align-items:start}.chat-panel{background:#fff;border:1px solid var(--line);border-radius:7px;overflow:hidden;display:flex;flex-direction:column;height:calc(100vh - 255px);min-height:570px;max-height:850px}.chat-heading{height:59px;border-bottom:1px solid var(--line);padding:0 22px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}.chat-heading div{display:flex;gap:8px;align-items:center}.chat-heading svg{color:var(--green);width:16px}.chat-heading strong{font-size:12px}.chat-heading>span{font-size:8px;color:#9ba39e}.messages{flex:1;overflow:auto;padding:25px 25px 15px;scroll-behavior:smooth;min-height:0}.welcome{max-width:370px;margin:36px auto 20px;text-align:center}.welcome-icon{display:inline-flex;padding:15px;color:var(--green);background:#eef5f0;border-radius:8px}.welcome-icon svg{width:29px;height:29px}.welcome h2{font-size:21px;margin:20px 0 9px}.welcome p{color:#929a95;font-size:12px;margin:0 0 27px}.sample-queries{display:grid;gap:9px}.sample-queries button{display:flex;align-items:center;justify-content:space-between;text-align:left;padding:13px 15px;background:#fff;border:1px solid var(--line);border-radius:5px;font-size:12px;color:#5c6860}.sample-queries button:hover{border-color:#8bb9a3;background:#fafcfb}.sample-queries svg{width:14px;color:#a0aaa3}.composer-area{padding:14px 20px 13px;background:#fff}.horizon-picker{display:flex;gap:2px;margin-bottom:11px;background:#f0f2f1;padding:3px;width:max-content;border-radius:5px}.horizon-picker button{border:0;background:transparent;padding:5px 18px;font-size:11px;border-radius:3px;color:#8a948d}.horizon-picker button[aria-pressed=true]{background:#fff;box-shadow:0 1px 4px #0000000e;color:var(--green);font-weight:600}form{border:1px solid #dce3df;border-radius:7px;padding:12px 12px 9px}form:focus-within{border-color:#7caf94;box-shadow:0 0 0 2px #1874540a}textarea{width:100%;resize:none;min-height:47px;max-height:150px;border:0;background:transparent;outline:none;font-size:12px;line-height:1.7;color:#28382e}textarea::placeholder{color:#a0a9a3}.composer-footer{display:flex;align-items:center;justify-content:space-between;gap:8px}.composer-footer span{font-size:9px;color:#a6ada8}.send{height:30px;width:32px;display:grid;place-items:center;border:0;background:var(--green);color:#fff;border-radius:4px}.send:hover{background:#105b40}.data-note{display:flex;align-items:center;justify-content:center;gap:5px;font-size:9px;color:#939b95;margin-top:10px}.data-note svg{width:11px;height:11px}.research-panel{padding:8px 0}.research-label{font-size:9px;color:#919c94;margin-bottom:12px}.research-panel h2{font-size:19px;margin:0 0 12px}.context-tags{display:flex;gap:7px;font-size:9px;color:#7a857d}.context-tags span{border:1px solid #dfe5e1;padding:4px 7px;border-radius:3px}.chart-section{margin-top:27px;border-top:1px solid var(--line);padding-top:20px}.section-title{display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:600}.chart-section .section-title{font-size:9px;color:#6d7a71}.demo-label{font-size:9px;font-weight:400;color:#9da59f}canvas{width:100%;height:156px;display:block;margin-top:12px}.chart-caption{display:flex;justify-content:space-between;font-size:8px;color:#a0a8a2;margin-top:8px}.criteria-section{margin-top:26px;border-top:1px solid var(--line);padding-top:20px}#criteria-count{font-size:10px;color:var(--green)}#criteria{list-style:none;padding:0;margin:14px 0;max-height:350px;overflow:auto}#criteria li{font-size:11px;line-height:1.8;color:#707d73;padding:10px 0;border-bottom:1px solid #e9ecea;display:flex;gap:9px}#criteria li:before{content:'';width:5px;height:5px;flex-shrink:0;background:#8bad99;border-radius:50%;margin-top:7px}#criteria .empty-criteria{color:#9aa49c;padding:20px 0}#criteria .empty-criteria:before{display:none}.research-foot{display:flex;gap:7px;align-items:center;font-size:9px;color:#9aa59d;margin-top:23px}.research-foot svg{width:14px}.page-footer{display:flex;justify-content:space-between;padding:20px 0;font-size:8px;color:#9aa49d}.message{margin:0 0 23px;max-width:100%;font-size:12px;line-height:1.9;overflow-wrap:anywhere;white-space:pre-wrap}.message-label{display:flex;gap:7px;align-items:center;font-size:9px;color:#8c9990;margin-bottom:8px;white-space:normal}.message-label svg{width:14px;color:var(--green)}.message.user{margin-left:15%;padding:12px 15px;background:#edf4f0;border-radius:6px}.message.user .message-label{color:#699079}.message.error{color:#b04747}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}@media(min-width:1500px){main{padding:0 60px}.desk{grid-template-columns:minmax(0,1fr) 330px;gap:35px}}@media(max-width:1100px){.workspace{grid-template-columns:175px minmax(0,1fr)}.sidebar{padding:28px 15px}main{padding:0 22px}.desk{grid-template-columns:minmax(0,1fr) 240px;gap:18px}.welcome h2{font-size:18px}}@media(max-width:850px){.workspace{grid-template-columns:1fr}.sidebar{display:none}.desk{grid-template-columns:minmax(0,1fr) 230px}.chat-heading>span{display:none}}@media(max-width:650px){main{padding:0 16px}.topbar{height:52px;font-size:10px}.page-heading{padding:22px 0 20px;gap:10px}h1{font-size:20px}.page-heading p{font-size:10px}.mode-badge{font-size:8px;padding:5px;white-space:nowrap}.mode-badge svg{display:none}.desk{grid-template-columns:1fr}.chat-panel{height:610px;min-height:0;max-height:none}.chat-heading{padding:0 16px;height:51px}.messages{padding:20px 16px}.welcome{margin:28px auto 20px}.composer-area{padding:12px}.data-note{font-size:8px}.research-panel{padding:20px 0}.research-panel h2{font-size:18px}.chart-section{display:none}.criteria-section{margin-top:18px}#criteria{max-height:none}.page-footer{font-size:7px;gap:15px}.connection{font-size:8px}.welcome h2{font-size:20px}}
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap");
+/* 공통 화면 스타일. index.html에서 market.css보다 먼저 읽는다.
+   같은 선택자가 뒤 파일에도 있으면 CSS 우선순위와 선언 순서에 따라 덮어써진다.
+   아래는 도움말/근거 패널 → 공통 토큰 → 레이아웃 → 대화/입력 → 반응형 순서다. */
+.criteria-heading-actions {
+  /* 체크리스트 개수와 도움말 아이콘을 제목 오른쪽에 나란히 둔다. */
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.criteria-help {
+  position: relative;
+  flex-shrink: 0;
+}
+.criteria-help > summary {
+  list-style: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+  color: #66796d;
+  border-radius: 4px;
+}
+.criteria-help > summary::-webkit-details-marker {
+  display: none;
+}
+.criteria-help > summary svg {
+  width: 16px;
+  height: 16px;
+}
+.criteria-help > summary:focus-visible {
+  outline: 2px solid #187454;
+  outline-offset: 2px;
+}
+.criteria-help .criteria-help-content {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  width: min(300px, calc(100vw - 48px));
+  padding: 14px;
+  background: #fff;
+  border: 1px solid #d5ded8;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px #00000018;
+  z-index: 20;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.7;
+  color: #33483b;
+}
+.criteria-help-content strong {
+  font-size: 12px;
+}
+.criteria-help-content p {
+  margin: 8px 0 0;
+}
+.criteria-help[open] .criteria-help-content {
+  display: block;
+}
+@media (hover: hover) {
+  .criteria-help:hover .criteria-help-content {
+    display: block;
+  }
+}
+.criterion-status.declared {
+  color: #187454;
+}
+.criterion-status.not_declared {
+  color: #b04747;
+}
+#criteria .criterion-row summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 135px);
+}
+#criteria .criterion-status {
+  white-space: normal;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+#criteria .criterion-row details details summary {
+  display: block;
+}
+.criterion-status.supported {
+  color: #187454;
+}
+.criterion-status.unused,
+.criterion-status.mismatch {
+  color: #b04747;
+}
+.criterion-status.no_data {
+  color: #926618;
+}
+.criterion-source {
+  /* 긴 원본 JSON이 우측 패널 너비를 밀어내지 않도록 줄바꿈과 내부 스크롤을 허용한다. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 240px;
+  overflow: auto;
+  font-size: 10px;
+  background: #eef1f0;
+  padding: 8px;
+  line-height: 1.6;
+}
+.criterion-row details details {
+  margin-top: 10px;
+}
+#criteria .criterion-row {
+  display: block;
+}
+#criteria .criterion-row:before {
+  display: none;
+}
+.criterion-row details {
+  width: 100%;
+  min-width: 0;
+}
+.criterion-row summary {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+.criterion-row summary::-webkit-details-marker {
+  display: none;
+}
+.criterion-row summary:focus-visible {
+  outline: 2px solid #187454;
+  outline-offset: 3px;
+}
+.criterion-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.criterion-status {
+  flex-shrink: 0;
+  font-size: 10px;
+  white-space: nowrap;
+  font-weight: 600;
+  color: #7a837d;
+}
+.criterion-status.applied {
+  color: #187454;
+}
+.criterion-status.missing {
+  color: #b04747;
+}
+.criterion-status.partial,
+.criterion-status.insufficient {
+  color: #926618;
+}
+.criterion-row p {
+  margin: 8px 0;
+  font-size: 10px;
+}
+.criterion-row blockquote {
+  margin: 8px 0;
+  padding: 4px 0 4px 10px;
+  border-left: 2px solid #9baea2;
+  font-size: 10px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.tool-trace {
+  /* 답변 아래의 접이식 도구 내역. 본문의 pre-wrap이 JSON 바깥 레이아웃에 전파되지 않게 한다. */
+  margin-top: 14px;
+  border-top: 1px solid #e5e8e7;
+  padding-top: 10px;
+  white-space: normal;
+  color: #526259;
+  min-width: 0;
+}
+.tool-trace summary {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
+.tool-trace summary:focus-visible {
+  outline: 2px solid #187454;
+  outline-offset: 3px;
+}
+.tool-trace section {
+  padding: 10px 0;
+  border-bottom: 1px solid #e5e8e7;
+}
+.tool-trace h3 {
+  font-size: 11px;
+  font-weight: 600;
+  margin: 0 0 6px;
+  overflow-wrap: anywhere;
+}
+.tool-trace pre {
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: #f5f6f7;
+  padding: 10px;
+  font-size: 11px;
+  line-height: 1.6;
+  margin: 6px 0;
+}
+.tool-trace p {
+  font-size: 11px;
+  margin: 8px 0;
+}
+:root {
+  /* CSS 변수는 여러 컴포넌트가 공유하는 색상 토큰이다. JS 상태와는 관계없다. */
+  font-family: "Noto Sans KR", Arial, sans-serif;
+  color: #202622;
+  background: #f5f6f7;
+  font-size: 14px;
+  letter-spacing: 0;
+  --green: #187454;
+  --line: #e5e8e7;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+button,
+a,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+button,
+textarea {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+}
+button:disabled {
+  cursor: wait;
+  opacity: 0.5;
+}
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 3px;
+}
+svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.7;
+  flex-shrink: 0;
+}
+.workspace {
+  /* 왼쪽 사이드바 + 나머지 본문. minmax(0,1fr)는 긴 내용 때문에 열이 넘치는 것을 막는다. */
+  display: grid;
+  grid-template-columns: 218px minmax(0, 1fr);
+  min-height: 100vh;
+}
+.sidebar {
+  background: #fff;
+  border-right: 1px solid var(--line);
+  padding: 32px 22px;
+  display: flex;
+  flex-direction: column;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #202622;
+  text-decoration: none;
+  font-size: 30px;
+  font-weight: 800;
+}
+.brand-symbol {
+  display: flex;
+  background: var(--green);
+  color: #fff;
+  padding: 7px;
+  border-radius: 6px;
+}
+.brand-symbol svg {
+  width: 23px;
+  height: 23px;
+}
+.brand-dot {
+  color: var(--green);
+  margin-left: -9px;
+}
+.brand-sub {
+  font-size: 8px;
+  color: #8a938e;
+  margin-top: 9px;
+}
+.new-chat {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  background: #fff;
+  border: 1px solid #ccd4d0;
+  border-radius: 5px;
+  padding: 12px;
+  margin: 34px 0;
+  color: #293b32;
+}
+.new-chat:hover {
+  background: #f1f7f4;
+}
+.nav-label {
+  font-size: 10px;
+  color: #929b96;
+  margin-bottom: 16px;
+}
+.nav-active {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 10px;
+  background: #eaf3ee;
+  color: var(--green);
+  border-radius: 5px;
+  font-weight: 600;
+  font-size: 12px;
+}
+.nav-mark {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--green);
+  margin-left: auto;
+}
+.sidebar-section {
+  margin-top: 35px;
+  border-top: 1px solid var(--line);
+  padding-top: 24px;
+  font-size: 12px;
+}
+.sidebar-section small {
+  display: block;
+  color: #949c97;
+  margin-top: 9px;
+}
+.sidebar-bottom {
+  margin-top: auto;
+  padding-top: 60px;
+  font-size: 10px;
+  color: #68776e;
+}
+.sidebar-bottom small {
+  display: block;
+  font-size: 9px;
+  color: #a0a7a2;
+  margin-top: 8px;
+}
+.status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: #288c67;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+main {
+  min-width: 0;
+  padding: 0 38px;
+  max-width: 1600px;
+  width: 100%;
+  margin: auto;
+}
+.topbar {
+  height: 73px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+}
+.breadcrumb {
+  color: #8d9690;
+}
+.slash {
+  margin: 0 13px;
+  color: #bdc4bf;
+}
+.connection {
+  font-size: 10px;
+  color: #76847b;
+}
+.page-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 30px 0 25px;
+}
+.eyebrow {
+  font-size: 9px;
+  color: var(--green);
+  font-weight: 600;
+  margin-bottom: 9px;
+}
+h1 {
+  font-size: 25px;
+  margin: 0;
+  font-weight: 700;
+}
+p {
+  line-height: 1.7;
+}
+.page-heading p {
+  margin: 9px 0 0;
+  font-size: 12px;
+  color: #8b948e;
+}
+.mode-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #dfdcd1;
+  color: #8b7b51;
+  background: #faf8f1;
+  padding: 7px 10px;
+  border-radius: 4px;
+  font-size: 10px;
+}
+.mode-badge svg {
+  width: 13px;
+  height: 13px;
+}
+.desk {
+  /* 채팅과 조사 패널의 기본 2열 배치. market.css에서 차트 패널 폭을 다시 지정한다. */
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 24px;
+  align-items: start;
+}
+.chat-panel {
+  /* 입력창은 아래에 남기고 messages만 스크롤하도록 세로 flex 구조를 만든다. */
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 255px);
+  min-height: 570px;
+  max-height: 850px;
+}
+.chat-heading {
+  height: 59px;
+  border-bottom: 1px solid var(--line);
+  padding: 0 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.chat-heading div {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.chat-heading svg {
+  color: var(--green);
+  width: 16px;
+}
+.chat-heading strong {
+  font-size: 12px;
+}
+.chat-heading > span {
+  font-size: 8px;
+  color: #9ba39e;
+}
+.messages {
+  flex: 1;
+  overflow: auto;
+  padding: 25px 25px 15px;
+  scroll-behavior: smooth;
+  min-height: 0;
+}
+.welcome {
+  max-width: 370px;
+  margin: 36px auto 20px;
+  text-align: center;
+}
+.welcome-icon {
+  display: inline-flex;
+  padding: 15px;
+  color: var(--green);
+  background: #eef5f0;
+  border-radius: 8px;
+}
+.welcome-icon svg {
+  width: 29px;
+  height: 29px;
+}
+.welcome h2 {
+  font-size: 21px;
+  margin: 20px 0 9px;
+}
+.welcome p {
+  color: #929a95;
+  font-size: 12px;
+  margin: 0 0 27px;
+}
+.sample-queries {
+  display: grid;
+  gap: 9px;
+}
+#discovery { text-align: left; width: 100%; }
+#discovery h3 { font-size: 13px; margin: 18px 0 8px; }
+#discovery .sample-queries button { width: 100%; gap: 12px; }
+#discovery .sample-queries button > span { min-width: 0; overflow-wrap: anywhere; }
+#discovery strong, #discovery small { display: block; }
+#discovery small { margin-top: 5px; line-height: 1.5; }
+#discovery p { font-size: 11px; line-height: 1.6; margin: 10px 0; }
+.sample-queries button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  text-align: left;
+  padding: 13px 15px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  font-size: 12px;
+  color: #5c6860;
+}
+.sample-queries button:hover {
+  border-color: #8bb9a3;
+  background: #fafcfb;
+}
+.sample-queries svg {
+  width: 14px;
+  color: #a0aaa3;
+}
+.composer-area {
+  /* 메시지 입력부. 비활성 버튼은 app.js가 요청 중 잠그고 완료 후 복구한다. */
+  padding: 14px 20px 13px;
+  background: #fff;
+}
+.horizon-picker {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 11px;
+  background: #f0f2f1;
+  padding: 3px;
+  width: max-content;
+  border-radius: 5px;
+}
+.horizon-picker button {
+  border: 0;
+  background: transparent;
+  padding: 5px 18px;
+  font-size: 11px;
+  border-radius: 3px;
+  color: #8a948d;
+}
+.horizon-picker button[aria-pressed="true"] {
+  background: #fff;
+  box-shadow: 0 1px 4px #0000000e;
+  color: var(--green);
+  font-weight: 600;
+}
+form {
+  border: 1px solid #dce3df;
+  border-radius: 7px;
+  padding: 12px 12px 9px;
+}
+form:focus-within {
+  border-color: #7caf94;
+  box-shadow: 0 0 0 2px #1874540a;
+}
+textarea {
+  width: 100%;
+  resize: none;
+  min-height: 47px;
+  max-height: 150px;
+  border: 0;
+  background: transparent;
+  outline: none;
+  font-size: 12px;
+  line-height: 1.7;
+  color: #28382e;
+}
+textarea::placeholder {
+  color: #a0a9a3;
+}
+.composer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.composer-footer span {
+  font-size: 9px;
+  color: #a6ada8;
+}
+.send {
+  height: 30px;
+  width: 32px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: var(--green);
+  color: #fff;
+  border-radius: 4px;
+}
+.send:hover {
+  background: #105b40;
+}
+.data-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 9px;
+  color: #939b95;
+  margin-top: 10px;
+}
+.data-note svg {
+  width: 11px;
+  height: 11px;
+}
+.research-panel {
+  padding: 8px 0;
+}
+.research-label {
+  font-size: 9px;
+  color: #919c94;
+  margin-bottom: 12px;
+}
+.research-panel h2 {
+  font-size: 19px;
+  margin: 0 0 12px;
+}
+.context-tags {
+  display: flex;
+  gap: 7px;
+  font-size: 9px;
+  color: #7a857d;
+}
+.context-tags span {
+  border: 1px solid #dfe5e1;
+  padding: 4px 7px;
+  border-radius: 3px;
+}
+.chart-section {
+  margin-top: 27px;
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+}
+.section-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+}
+.chart-section .section-title {
+  font-size: 9px;
+  color: #6d7a71;
+}
+.demo-label {
+  font-size: 9px;
+  font-weight: 400;
+  color: #9da59f;
+}
+canvas {
+  width: 100%;
+  height: 156px;
+  display: block;
+  margin-top: 12px;
+}
+.chart-caption {
+  display: flex;
+  justify-content: space-between;
+  font-size: 8px;
+  color: #a0a8a2;
+  margin-top: 8px;
+}
+.criteria-section {
+  margin-top: 26px;
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+}
+#criteria-count {
+  font-size: 10px;
+  color: var(--green);
+}
+#criteria {
+  /* JS가 관점별 항목을 교체하는 목록. 길어져도 패널 높이를 무한히 늘리지 않는다. */
+  list-style: none;
+  padding: 0;
+  margin: 14px 0;
+  max-height: 350px;
+  overflow: auto;
+}
+#criteria li {
+  font-size: 11px;
+  line-height: 1.8;
+  color: #707d73;
+  padding: 10px 0;
+  border-bottom: 1px solid #e9ecea;
+  display: flex;
+  gap: 9px;
+}
+#criteria li:before {
+  content: "";
+  width: 5px;
+  height: 5px;
+  flex-shrink: 0;
+  background: #8bad99;
+  border-radius: 50%;
+  margin-top: 7px;
+}
+#criteria .empty-criteria {
+  color: #9aa49c;
+  padding: 20px 0;
+}
+#criteria .empty-criteria:before {
+  display: none;
+}
+.research-foot {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  font-size: 9px;
+  color: #9aa59d;
+  margin-top: 23px;
+}
+.research-foot svg {
+  width: 14px;
+}
+.page-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 20px 0;
+  font-size: 8px;
+  color: #9aa49d;
+}
+.message {
+  /* 모델 답변은 HTML이 아닌 텍스트이므로 공백/줄바꿈을 CSS로 보존한다. */
+  margin: 0 0 23px;
+  max-width: 100%;
+  font-size: 12px;
+  line-height: 1.9;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.message-label {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  font-size: 9px;
+  color: #8c9990;
+  margin-bottom: 8px;
+  white-space: normal;
+}
+.message-label svg {
+  width: 14px;
+  color: var(--green);
+}
+.message.user {
+  margin-left: 15%;
+  padding: 12px 15px;
+  background: #edf4f0;
+  border-radius: 6px;
+}
+.message.user .message-label {
+  color: #699079;
+}
+.message.error {
+  color: #b04747;
+}
+.sr-only {
+  /* 스크린리더용 이름은 남기되 시각적으로만 숨기는 접근성 패턴이다. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+@media (min-width: 1500px) {
+  /* 넓은 화면의 여백 조정. 아래 좁은 화면 규칙에서는 열 수와 사이드바 표시를 바꾼다. */
+  main {
+    padding: 0 60px;
+  }
+  .desk {
+    grid-template-columns: minmax(0, 1fr) 330px;
+    gap: 35px;
+  }
+}
+@media (max-width: 1100px) {
+  .workspace {
+    grid-template-columns: 175px minmax(0, 1fr);
+  }
+  .sidebar {
+    padding: 28px 15px;
+  }
+  main {
+    padding: 0 22px;
+  }
+  .desk {
+    grid-template-columns: minmax(0, 1fr) 240px;
+    gap: 18px;
+  }
+  .welcome h2 {
+    font-size: 18px;
+  }
+}
+@media (max-width: 850px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+  .sidebar {
+    display: none;
+  }
+  .desk {
+    grid-template-columns: minmax(0, 1fr) 230px;
+  }
+  .chat-heading > span {
+    display: none;
+  }
+}
+@media (max-width: 650px) {
+  main {
+    padding: 0 16px;
+  }
+  .topbar {
+    height: 52px;
+    font-size: 10px;
+  }
+  .page-heading {
+    padding: 22px 0 20px;
+    gap: 10px;
+  }
+  h1 {
+    font-size: 20px;
+  }
+  .page-heading p {
+    font-size: 10px;
+  }
+  .mode-badge {
+    font-size: 8px;
+    padding: 5px;
+    white-space: nowrap;
+  }
+  .mode-badge svg {
+    display: none;
+  }
+  .desk {
+    grid-template-columns: 1fr;
+  }
+  .chat-panel {
+    height: 610px;
+    min-height: 0;
+    max-height: none;
+  }
+  .chat-heading {
+    padding: 0 16px;
+    height: 51px;
+  }
+  .messages {
+    padding: 20px 16px;
+  }
+  .welcome {
+    margin: 28px auto 20px;
+  }
+  .composer-area {
+    padding: 12px;
+  }
+  .data-note {
+    font-size: 8px;
+  }
+  .research-panel {
+    padding: 20px 0;
+  }
+  .research-panel h2 {
+    font-size: 18px;
+  }
+  .chart-section {
+    display: none;
+  }
+  .criteria-section {
+    margin-top: 18px;
+  }
+  #criteria {
+    max-height: none;
+  }
+  .page-footer {
+    font-size: 7px;
+    gap: 15px;
+  }
+  .connection {
+    font-size: 8px;
+  }
+  .welcome h2 {
+    font-size: 20px;
+  }
+}

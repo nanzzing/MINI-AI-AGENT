@@ -18,6 +18,9 @@ class Horizon(str, Enum):
 
 # 모델 지시문과 화면 체크리스트가 함께 사용하는 조사 기준이다. 지표 계산 결과는 아니다.
 RESEARCH_FOCUS = {
+    # 모델의 조사 지침과 화면 체크리스트가 공통으로 사용하는 단일 기준표다.
+    # 항목이 여기 존재해도 실제 수집기가 구현됐다는 뜻은 아니다. coverage.py에서
+    # 항목별 제공 자료를 연결하며, 예를 들어 업종 비교 자료는 현재 미구현이다.
     Horizon.SHORT: (
         "RSI",
         "MACD",
@@ -70,6 +73,7 @@ class ConversationState:
 
 
 def detect_horizon(message: str) -> Horizon | None:
+    """명시된 관점 단어 하나만 인식하는 보조 규칙. LLM의 자연어 이해를 대체하지 않는다."""
     # '중장기' 안의 '장기'를 중복 인식하지 않도록 먼저 표현을 통일한다.
     message = message.replace("중장기", "중기")
     labels = {Horizon.SHORT: "단기", Horizon.MEDIUM: "중기", Horizon.LONG: "장기"}
@@ -89,6 +93,7 @@ class InvestmentConversation:
         self.state = ConversationState()
 
     def respond(self, message: str) -> str:
+        """초기 학습용 규칙 대화. 실제 웹 요청은 llm.OpenAIConversation.respond로 간다."""
         message = message.strip()
         if not message:
             return "조사할 종목이나 투자 기간을 입력해 주세요."

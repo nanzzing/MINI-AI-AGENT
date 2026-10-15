@@ -1,4 +1,5 @@
 [build-system]
+# pip install . 실행 시 setuptools로 src 아래 패키지를 설치한다.
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
@@ -8,8 +9,10 @@ version = "0.1.0"
 description = "A small Python AI agent learning project"
 requires-python = ">=3.11"
 dependencies = ["openai>=2.0,<3", "python-dotenv>=1.0,<2", "yfinance>=1.7,<2", "pandas>=2.2,<4"]
+# openai: 모델 API, python-dotenv: 로컬 설정, yfinance: 시세/재무, pandas: 표/지표 계산.
 
 [project.scripts]
+# 설치 후 사용할 터미널 명령 이름 = Python 모듈:실행 함수.
 mini-ai-agent = "mini_ai_agent.main:main"
 mini-ai-agent-web = "mini_ai_agent.server:main"
 
@@ -17,4 +20,5 @@ mini-ai-agent-web = "mini_ai_agent.server:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
+# Python 코드 외에 화면·종목 목록·프롬프트도 배포 패키지에 포함해야 서버가 읽을 수 있다.
 mini_ai_agent = ["static/*", "data/*.json", "prompts/*.txt"]

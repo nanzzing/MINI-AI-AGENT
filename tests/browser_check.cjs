@@ -1,3 +1,5 @@
+// 로컬 서버 화면의 오류/초기화/가짜 성공 응답을 점검한다. 일부 요청은 실제 서버로 간다.
+// Playwright 경로와 Edge 경로는 현재 개발 PC 기준이라 다른 PC에서는 조정해야 한다.
 const { chromium } = require('C:/Users/Park Chan Wan/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
 (async () => {
   const browser = await chromium.launch({headless:true, executablePath:'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'});

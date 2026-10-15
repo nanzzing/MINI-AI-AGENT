@@ -6,6 +6,7 @@ from mini_ai_agent.conversation import Horizon, InvestmentConversation, detect_h
 
 
 class ConversationTests(unittest.TestCase):
+    # 실제 웹 모델 테스트가 아니라 초기 규칙 기반 예제의 동작 계약을 보존하는 테스트다.
     def test_followup_preserves_company(self):
         # 첫 질문에서 종목을 기억하고 다음 메시지에서는 기간만 받아 완성한다.
         conversation = InvestmentConversation()

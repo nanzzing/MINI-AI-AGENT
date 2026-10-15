@@ -1,3 +1,5 @@
+// 실제 로컬 서버의 차트를 열고 확대·그리기·되돌리기·페이지 메모리 보관을 조작한다.
+// Playwright는 사용자의 마우스/키보드 동작을 자동화하며 모델을 대신 판단하는 도구는 아니다.
 const assert=require('node:assert/strict');
 const {chromium}=require('C:/Users/Park Chan Wan/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
 (async()=>{

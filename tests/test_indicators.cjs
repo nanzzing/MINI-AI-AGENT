@@ -1,3 +1,5 @@
+// Node에는 브라우저 window가 없으므로 빈 객체를 준비해 화면용 순수 계산 함수를 불러온다.
+// 상승/횡보 합성 종가로 초기 준비 기간, RSI 극값, 볼린저 계산을 확인한다.
 const assert=require('node:assert/strict');
 global.window={};require('../src/mini_ai_agent/static/indicators.js');
 const bars=Array.from({length:80},(_,i)=>({time:String(i),close:100+i}));

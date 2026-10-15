@@ -7,11 +7,19 @@ import pandas as pd
 
 
 def analyze(prices, today=None):
+    """price_history의 bars를 받아 모델용 지표 사전을 반환한다.
+
+    today를 주입할 수 있게 한 이유는 테스트에서 '오늘'을 고정하기 위해서다.
+    브라우저 indicators.js와 달리 당일 봉·현재 월봉을 제외하고 분석하므로
+    화면의 최신 지표와 값이 다를 수 있다. 계산 불가능한 항목은 None(JSON null)이다.
+    """
     bars = prices.get("bars", [])
     if not bars:
         return {"status": "unavailable", "reason": "가격 데이터 없음"}
     today = today or datetime.now(ZoneInfo(prices.get("timezone") or "UTC")).date()
     frame = pd.DataFrame(bars).drop_duplicates("time").sort_values("time")
+    # rolling/ewm 계산은 행 순서에 영향을 받으므로 중복 날짜를 제거하고 시간순으로
+    # 정렬한다. 충분한 과거 봉이 없으면 계산 결과 NaN을 아래 value가 None으로 바꾼다.
     # 당일 일봉은 장중일 수 있으므로 확정된 이전 거래일까지 사용한다.
     frame = frame[frame.time < today.isoformat()]
     if frame.empty:
@@ -19,19 +27,24 @@ def analyze(prices, today=None):
     close = frame.close.astype(float)
 
     def value(x):
+        # pandas의 NaN을 None으로 바꾸고 정상 숫자의 과도한 소수 자릿수를 줄인다.
         return round(float(x), 6) if pd.notna(x) and math.isfinite(float(x)) else None
 
     def change(series, days):
+        # 현재 값과 days개 전 값을 비교한 변화율(%). 필요한 이력이 없으면 None이다.
         return value((series.iloc[-1] / series.iloc[-days-1] - 1) * 100) if len(series) > days and series.iloc[-days-1] else None
 
     ma = {}
     for window in (20, 60, 120, 200):
+        # SMA는 최근 window개 종가의 단순평균이다. slope는 이평선 자체의 5일 변화,
+        # distance는 현재 종가가 그 이평선에서 얼마나 떨어져 있는지 나타낸다.
         average = close.rolling(window).mean()
         latest = value(average.iloc[-1])
         ma[str(window)] = {"value": latest, "slope_5_sessions_pct": change(average, 5),
                            "distance_pct": value((close.iloc[-1] / latest - 1) * 100) if latest else None}
     values = [ma[str(w)]["value"] for w in (20, 60, 120, 200)]
     ordered = all(a > b for a, b in zip(values, values[1:])) if all(v is not None for v in values) else None
+    # 정배열은 20 > 60 > 120 > 200을 모두 충족해야 True다. 데이터 부족은 False와 다르다.
 
     # Wilder RSI: 첫 14개 변화의 단순평균으로 시작하고 이후 1/14로 평활한다.
     rsi = None
@@ -43,9 +56,12 @@ def analyze(prices, today=None):
             avg_gain, avg_loss = (avg_gain * 13 + g) / 14, (avg_loss * 13 + l) / 14
         rsi = value(100 - 100 / (1 + avg_gain / avg_loss)) if avg_loss else 100.0 if avg_gain else 50.0
     macd = close.ewm(span=12, adjust=False, min_periods=12).mean() - close.ewm(span=26, adjust=False, min_periods=26).mean()
+    # MACD=12일 EMA-26일 EMA, signal=MACD의 9일 EMA, histogram=둘의 차이다.
+    # EMA는 최근 값에 더 큰 가중치를 주는 이동평균이며 SMA와 계산 방식이 다르다.
     signal = macd.ewm(span=9, adjust=False, min_periods=9).mean()
     middle, std = close.rolling(20).mean(), close.rolling(20).std(ddof=0)
     upper, lower = middle + 2 * std, middle - 2 * std
+    # 볼린저 밴드는 20일 평균 ± 표준편차 2배다. ddof=0으로 모집단 표준편차를 쓴다.
     last = float(close.iloc[-1])
     band_position = None if pd.isna(upper.iloc[-1]) else "above_upper" if last > upper.iloc[-1] else "below_lower" if last < lower.iloc[-1] else "inside"
 
@@ -62,6 +78,8 @@ def analyze(prices, today=None):
         streak += 1
     qualified = streak >= 3 if len(months) >= 7 else None
     prior = frame.iloc[-21:-1]
+    # 최신 봉을 제외한 직전 20거래일로 거래량 평균과 지지·저항 참고 구간을 만든다.
+    # 지지·저항은 최저/최고가의 단순 대용치이며 추세선 분석이나 매매 신호가 아니다.
     volume_mean = prior.volume.mean() if len(prior) == 20 else None
     return {"status": "ok" if len(frame) >= 205 and qualified is not None else "partial",
             "as_of": frame.time.iloc[-1], "source": prices.get("source"), "currency": prices.get("currency"),

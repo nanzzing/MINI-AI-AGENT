@@ -7,6 +7,7 @@ from mini_ai_agent.technicals import analyze
 
 
 def prices(flat=False):
+    # 외부 시세 대신 상승/횡보 합성 일봉을 만든다. 계산 결과를 예측할 수 있어 경계값 검증에 좋다.
     bars = []
     for i, day in enumerate(pd.bdate_range('2023-01-01', '2025-10-15')):
         close = 100 if flat else 100 + i

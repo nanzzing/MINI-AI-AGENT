@@ -1,3 +1,5 @@
+// 실행 중인 localhost:8765와 실제 시장 데이터가 필요한 브라우저 통합 테스트다.
+// 서버/공급자 상태에 영향을 받으므로 순수 계산 테스트와 구분해서 실행한다.
 const assert = require('node:assert/strict');
 const {chromium} = require('C:/Users/Park Chan Wan/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
 (async () => {

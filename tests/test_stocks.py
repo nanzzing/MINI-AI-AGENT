@@ -7,6 +7,7 @@ from mini_ai_agent.stocks import find_stocks, load_catalog, parse_master
 
 
 class StockTests(unittest.TestCase):
+    # 저장된 카탈로그와 파서만 사용한다. 테스트 중 KIS 전체 목록을 다시 내려받지 않는다.
     def test_korean_codes_keep_leading_zero(self):
         # 종목코드는 숫자로 변환하면 앞의 0이 사라지므로 문자열이어야 한다.
         self.assertEqual(find_stocks("삼전 분석해줘")[0]["code"], "005930")

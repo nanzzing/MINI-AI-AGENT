@@ -50,7 +50,133 @@ the terminal. Conversations are held in server memory and reset on restart.
 The chart displays actual adjusted daily OHLCV from Yahoo Finance, not streaming
 quotes. Chat uses OpenAI Responses API. Stock search also works without an API key.
 
+### Research wait time
+
+Model rounds and tool executions no longer have a fixed per-question count cap.
+The Agent Loop continues until a valid final answer or an API/network error;
+context, tool permissions, required data, and answer validation still apply.
+Network timeouts remain (90 seconds for the subscription client, 45 for API-key
+requests); these are not deadlines for the entire investigation. Repeated calls
+can consume more usage. For an unwanted ongoing loop, stop the local server
+process. Closing the page is not immediate cancellation: the server stops further
+calls when a subsequent progress write detects disconnection, not during an
+already-running model or data request.
+
+The chat now shows actual server stages (model round, tool execution, validation),
+total elapsed seconds, and time in the current stage. Expand the live execution
+record while waiting. Completed model/tool durations remain in the final Agent
+Loop record, and received progress remains visible after an error. These are
+observable execution events, not the model's private reasoning or a completion
+estimate. This adds visibility; it does not change model effort or parallelize tools.
+
+The browser requests `Accept: application/x-ndjson` on `POST /api/chat` to receive
+`progress`, `result`, or `error` events. The final result is still validated before
+being displayed; a disconnected stream without a result is an error. Clients
+without this Accept header retain the original JSON response contract.
+
+### Research checklist and common rules
+
+`conversation.py` defines 16 short-, 12 medium-, and 20 long-term criteria.
+The medium-term monthly filter starts with the latest completed month and requires
+at least three consecutive qualifying months. `prompts/research.txt` separately
+holds the eight common response rules, including source/date disclosure, opposing
+evidence, explicit assumptions, and the short-term 20/40-session indicator window.
+
+`coverage.py` maps criterion names to evidence explicitly rather than zipping
+parallel lists by index. New checklist names do not create new data providers.
+
+### Long-term valuation tool
+
+`get_valuation_comparison` is offered and executable only after long-term context
+is confirmed. Long-term answers require a valid cached result or an attempted
+lookup; missing provider fields do not cause repeated requests. Results are cached
+by stock and exchange for five minutes and removed from model context when moving
+to short/medium research. The eval fixture replaces this provider too.
+
+`valuation.py` reads Yahoo Finance company trailing/forward P/E, P/B, ROE and
+EV/EBITDA when supplied. FCF yield uses provider free cash flow / market cap only
+when both currencies match. Missing/non-finite values are not zero; nonpositive
+valuation multiples are unavailable, while negative ROE/FCF remain valid data.
+Provider periods are explicitly marked unknown where unverified. Quote time is
+not the earnings/estimate date. No adjusted chart prices are used for these ratios.
+
+Industry averages (including forward P/E), peer comparisons and historical
+valuation ranges are **not connected yet**. The tool returns explicit unavailable
+sections, not invented benchmarks, and the prompt prohibits substituting company
+metrics for industry averages. A licensed comparison provider with compatible
+periods and aggregation definitions is needed to complete those comparisons.
+Public redistribution of Yahoo/other provider data requires checking their terms.
+
+### Always-visible US market indicators
+
+The sticky top strip loads `/api/market-indicator?name=vix|buffett|fear_greed`
+independently from chat. It does not call the model or add these values to its
+context. Each provider has a five-minute, per-process cache, including failures;
+hidden tabs do not poll. Failed refreshes retain any cached value with a stale
+label and its original observation date, never a fabricated zero.
+
+- VIX: Cboe `VIX_History.csv`, latest available daily close, not a live quote.
+- Buffett proxy: FRED `NCBEILQ027S / (GDP * 1000) * 100`, using the latest common
+  quarter. The numerator is nonfinancial corporate equity value in millions of
+  USD, not total listed market capitalization; GDP is billions of USD at an
+  annual rate. The visible proxy label and formula disclosure are intentional.
+- CNN stock Fear & Greed: optional CNN web data endpoint. This is not a supported
+  public developer API. Current local verification returned HTTP 418. The tile
+  remains visible as unavailable with an official page link. No blocking bypass,
+  cryptocurrency substitution, or invented score is used.
+
+Review provider redistribution/licensing terms before public deployment. Source
+links and reference periods remain visible. Tests: `tests/test_market_indicators.py`
+and `tests/browser_market_indicators.cjs` (mocked browser responses).
+Unavailable benchmarks, consensus, segment disclosures, ATR, and other missing
+components are disclosed in the evidence bank and the UI's data limitations.
+Some criteria have usable partial inputs, not complete coverage of every component.
+
 ## OpenAI Connection
+
+### Local ChatGPT subscription (Plus / Pro)
+
+The local web server now defaults to **Sign in with ChatGPT**:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -e .
+.\.venv\Scripts\python.exe -m mini_ai_agent.server --host 127.0.0.1 --port 8765 --auth chatgpt
+```
+
+Open http://127.0.0.1:8765, click **Continue with ChatGPT**, sign in on OpenAI's
+official page, and allow ChatGPT plan usage. The app loads the models available
+to that account; choose one before chatting. Google sign-in alone is not a grant
+to use the plan. Login cancellation, eligibility errors, or usage limits never
+fall back to paid API requests. The account's actual eligibility is checked by OpenAI.
+
+The existing stock tools, Agent Loop, evidence linking, and research criteria
+remain in Python. The subscription adapter streams Responses with `store=false`,
+wraps functions in a namespace, and omits the unsupported `max_output_tokens`.
+Only a completed stream is accepted as a response. Model names are discovered,
+not copied from `OPENAI_MODEL`. Live research/evaluation consumes plan usage.
+
+Credentials are **not** stored in this repository, browser localStorage, or logs.
+On Windows the app uses DPAPI under `%LOCALAPPDATA%\MINI-AI-AGENT\chatgpt`;
+on other local systems it uses owner-only files under `~/.config/MINI-AI-AGENT/chatgpt`.
+This is a new app connection, not a copy of Codex/browser credentials. Refreshes
+are serialized with a file lock. Logout attempts remote revocation, clears local
+tokens, and keeps the registration/host ID for later sign-in. Account or model
+switching starts a new research session. Manage limits/disconnect in
+https://chatgpt.com/settings/usage and ChatGPT security settings.
+
+Subscription mode is restricted to loopback (`127.0.0.1`), rejects cross-origin
+POSTs and invalid Host/CSRF values, and is disabled on Render/public bindings.
+Do not expose it via a tunnel or reverse proxy. Remotely hosted or paid apps need
+separate approval; this implementation is for personal local study.
+
+Official integration contract:
+https://developers.openai.com/siwc/token-sharing-open-source
+
+### Separate API billing (existing deployment / CLI)
+
+Use `--auth api` to explicitly run the local web UI with the existing API-key
+path. Render/public binding and CLI/evals retain their existing API-key behavior;
+`evals/run.py --live` still uses API billing, not this web login.
 
 Edit the project-root `.env` locally:
 

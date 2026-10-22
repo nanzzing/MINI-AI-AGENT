@@ -21,15 +21,22 @@ async function refreshStatus() {
     if (!response.ok) throw new Error("status");
     const data = await response.json();
     researchFocus = data.research_focus || researchFocus;
-    $(".connection").textContent = data.configured
-      ? `OpenAI · ${data.model}`
-      : "OpenAI · API 키 설정 필요";
+    showConnection(data);
+    window.chatgptAuth?.render(data);
     $(".data-note").textContent =
       "Yahoo Finance 가격·재무 / Google News · 제공 시점 기준";
   } catch {
     $(".connection").textContent = "서버 연결 확인 필요";
   }
 }
+
+function showConnection(data) {
+  $(".connection").textContent = data.provider === 'chatgpt'
+    ? (data.configured ? `ChatGPT 구독 · ${data.model}` : 'ChatGPT · 로그인 / 모델 선택 필요')
+    : (data.configured ? `OpenAI API · ${data.model}` : 'OpenAI · API 키 설정 필요');
+}
+window.addEventListener('mini-auth-status', (event) => showConnection(event.detail));
+window.addEventListener('mini-account-change', () => send('/reset', true));
 
 function addMessage(text, type = "assistant") {
   // 모델/사용자 문자열은 HTML로 해석하지 않는다. text node를 사용해 스크립트 삽입을 막는다.
@@ -46,9 +53,130 @@ function addMessage(text, type = "assistant") {
   return node;
 }
 
-function renderAgentSteps(message, steps = []) {
-  // 서버가 관찰한 이벤트 배열을 순서대로 그린다. SSE/WebSocket 스트리밍이 아니므로
-  // POST 응답이 완료된 뒤 한 번에 나타난다. 모델의 비공개 사고를 보여주는 기능은 아니다.
+function showPendingReply(reset = false) {
+  // 서버의 실제 단계 이벤트만 표시한다. 내부 추론 내용이나 진행률을 추측하지 않는다.
+  const started = performance.now();
+  let stageStarted = started;
+  let stageTitle = reset ? "초기화 중" : "조사·답변 준비 중";
+  const steps = [];
+  const node = addMessage("");
+  node.classList.add("pending");
+  const row = document.createElement("div");
+  row.className = "pending-status";
+  const spinner = document.createElement("i");
+  spinner.dataset.lucide = "loader-circle";
+  spinner.className = "pending-spinner";
+  spinner.setAttribute("aria-hidden", "true");
+  const label = document.createElement("span");
+  label.setAttribute("role", "status");
+  label.textContent = reset ? "대화를 초기화하고 있어요" : "자료를 조사하고 답변을 준비하고 있어요";
+  const elapsed = document.createElement("span");
+  elapsed.className = "pending-elapsed";
+  // 매초 스크린리더가 안내를 반복하지 않도록 시간은 별도의 일반 텍스트로 둔다.
+  elapsed.setAttribute("role", "timer");
+  elapsed.setAttribute("aria-live", "off");
+  row.append(spinner, label, elapsed);
+  node.append(row);
+  const stageElapsed = document.createElement("p");
+  stageElapsed.className = "pending-stage-elapsed";
+  stageElapsed.setAttribute("aria-live", "off");
+  stageElapsed.hidden = true;
+  const trace = document.createElement("details");
+  trace.className = "tool-trace pending-trace";
+  trace.hidden = true;
+  const summary = document.createElement("summary");
+  const list = document.createElement("ol");
+  trace.append(summary, list);
+  node.append(stageElapsed, trace);
+  icons();
+  const seconds = () => Math.floor((performance.now() - started) / 1000);
+  const update = () => {
+    elapsed.textContent = `${seconds()}초 경과`;
+    stageElapsed.textContent = `현재 단계 ${Math.floor((performance.now() - stageStarted) / 1000)}초`;
+    $("#composer-status").textContent = `${stageTitle} · ${seconds()}초 경과`;
+  };
+  update();
+  const timer = setInterval(update, 1000);
+  $("#messages").scrollTop = $("#messages").scrollHeight;
+  return {
+    steps,
+    progress(step) {
+      if (!step || typeof step.event !== "string") return;
+      const tools = { search_stock: "종목 검색", set_research_context: "종목·관점 설정",
+        get_price_analysis: "가격·기술적 지표 조회", get_financials: "재무 조회",
+        get_news: "뉴스 조회", get_events: "실적 일정 조회", get_valuation_comparison: "장기 가치평가 조회" };
+      stageTitle = step.event === "모델 호출" ? `모델 ${step.round}차 응답 대기 중`
+        : step.event === "모델 → 파이썬" ? `${tools[step.tool] || step.tool || "도구 실행"} 중`
+        : step.event === "파이썬 실행 완료" ? `${tools[step.tool] || "도구 실행"} 완료`
+        : step.event;
+      label.textContent = stageTitle;
+      stageStarted = performance.now();
+      stageElapsed.hidden = false;
+      steps.push(step);
+      trace.hidden = false;
+      summary.textContent = `진행 기록 · ${steps.length}단계`;
+      const item = document.createElement("li");
+      const duration = Number.isFinite(step.duration_ms) ? ` · ${(step.duration_ms / 1000).toFixed(1)}초 소요` : "";
+      item.textContent = `${step.round ? `${step.round}차 · ` : ""}${stageTitle}${duration}`;
+      if (step.event === "서버 보완 요청" && step.detail) {
+        const reason = document.createElement("p");
+        reason.textContent = step.detail;
+        item.append(reason);
+      }
+      list.append(item);
+      // 조사 횟수는 제한하지 않는다. 대기 화면의 DOM만 최근 100개로 유지한다.
+      if (list.children.length > 100) list.firstElementChild.remove();
+      list.scrollTop = list.scrollHeight;
+      update();
+    },
+    finish() {
+      // 성공/실패 모두 finally에서도 정리할 수 있도록 멱등적으로 만든다.
+      clearInterval(timer);
+      node.remove();
+      return seconds();
+    },
+  };
+}
+
+async function readChatResponse(response, onProgress) {
+  // 기존 JSON 응답과 새 NDJSON 스트림을 함께 지원한다. 네트워크 청크 경계는
+  // JSON 한 줄 또는 UTF-8 글자 경계와 다를 수 있으므로 decoder와 버퍼를 사용한다.
+  if (!response.headers.get("Content-Type")?.includes("application/x-ndjson")) {
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "요청을 처리하지 못했어요.");
+    return data;
+  }
+  if (!response.ok || !response.body) throw new Error("조사 연결을 시작하지 못했어요.");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done });
+      const lines = buffer.split("\n");
+      buffer = lines.pop();
+      if (done && buffer.trim()) lines.push(buffer);
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        let event;
+        try { event = JSON.parse(line); }
+        catch { throw new Error("조사 진행 응답을 해석하지 못했어요."); }
+        if (event?.type === "progress") onProgress(event.step);
+        else if (event?.type === "error") throw new Error(event.error || "조사 중 오류가 발생했어요.");
+        else if (event?.type === "result" && typeof event.data?.reply === "string") return event.data;
+        else throw new Error("조사 진행 응답 형식이 올바르지 않아요.");
+      }
+      if (done) throw new Error("최종 답변을 받기 전에 연결이 종료됐어요. 마지막 진행 단계를 확인해 주세요.");
+    }
+  } finally {
+    try { await reader.cancel(); } catch { /* 이미 끊어진 연결도 정리한다. */ }
+    reader.releaseLock();
+  }
+}
+
+function renderAgentSteps(message, steps = [], completed = true) {
+  // 완료 시에는 전체 기록, 오류 시에는 그때까지 수신한 기록을 보존한다.
   // round는 모델 API 호출 번호다. 한 round 안에 여러 도구 실행이 들어갈 수 있다.
   if (!steps.length) return;
   const panel = document.createElement("details");
@@ -58,14 +186,16 @@ function renderAgentSteps(message, steps = []) {
   summary.textContent = `Agent Loop · 모델 호출 ${steps.filter((step) => step.event === "모델 호출").length}회`;
   panel.append(summary);
   const note = document.createElement("p");
-  note.textContent = "답변 완료 후 표시하는 실제 실행 기록입니다. 모델의 내부 사고 과정은 아닙니다.";
+  note.textContent = completed ? "서버가 기록한 실제 실행 단계와 소요 시간입니다. 모델의 내부 사고 과정은 아닙니다."
+    : "오류 전까지 수신한 실행 기록입니다. 마지막 대기 단계는 완료되지 않았을 수 있습니다.";
   panel.append(note);
   const list = document.createElement("ol");
   for (const step of steps) {
     // 서버 문자열도 신뢰한 HTML로 넣지 않는다. textContent로 표시하면 태그는 글자가 된다.
     const item = document.createElement("li");
     const title = document.createElement("strong");
-    title.textContent = `${step.round}차 · ${step.event}`;
+    const duration = Number.isFinite(step.duration_ms) ? ` · ${(step.duration_ms / 1000).toFixed(1)}초 소요` : "";
+    title.textContent = `${step.round ? `${step.round}차 · ` : ""}${step.event}${duration}`;
     const detail = document.createElement("p");
     detail.textContent = step.detail;
     item.append(title, detail);
@@ -206,6 +336,12 @@ function renderCriteria(horizon, focus, coverage = []) {
       explanation.textContent =
         explanations[check.status] || "사용 여부를 확인할 수 없습니다.";
       details.append(explanation);
+      if (check.limitations) {
+        const limitation = document.createElement("p");
+        limitation.className = "criterion-limitation";
+        limitation.textContent = `자료 범위 제한: ${check.limitations}`;
+        details.append(limitation);
+      }
       const reason = document.createElement("p");
       reason.textContent = check.reason;
       details.append(reason);
@@ -278,11 +414,13 @@ async function send(message, reset = false) {
   // 한 요청 동안 입력 버튼을 잠그고 finally에서 반드시 복구한다.
   // 이 함수의 fetch는 같은 출처이므로 브라우저가 세션 쿠키를 자동으로 전송한다.
   if (busy || !message.trim()) return;
+  await statusReady;
+  if (busy) return;
   busy = true;
+  window.chatgptAuth?.setChatBusy(true);
   document
     .querySelectorAll("button")
     .forEach((button) => (button.disabled = true));
-  $("#composer-status").textContent = "응답을 준비하고 있어요…";
   const previousHorizon = selectedHorizon;
   // 즉시 갱신한 체크리스트는 낙관적 화면 변경이다. 요청 실패 시 이전 상태로 되돌린다.
   const previousFocus = Array.from(
@@ -303,40 +441,50 @@ async function send(message, reset = false) {
   } else renderCriteria(selectedHorizon, previousFocus);
   if (!reset) addMessage(message, "user");
   if (reset) marketView.clear();
-  // 명확히 입력된 종목의 차트는 모델 응답을 기다리지 않고 조회한다.
-  if (!reset && !/^(단기|중기|중장기|장기)$/.test(message.trim()))
-    marketView.load({
-      query: message,
-      ...(selectedHorizon ? { horizon: selectedHorizon } : {}),
-    });
+  const pending = showPendingReply(reset);
   try {
+    // 명확히 입력된 종목의 차트는 모델 응답을 기다리지 않고 조회한다.
+    if (!reset && !/^(단기|중기|중장기|장기)$/.test(message.trim()))
+      marketView.load({
+        query: message,
+        ...(selectedHorizon ? { horizon: selectedHorizon } : {}),
+      });
     const response = await fetch("/api/chat", {
       // 서버가 요구하는 JSON 입력은 message 하나다. 이전 대화 전체를 브라우저가 보내지
       // 않아도 Python 세션이 history를 가지고 있어서 후속 질문을 이어갈 수 있다.
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Accept": "application/x-ndjson", ...window.chatgptAuth?.headers() },
       body: JSON.stringify({ message }),
     });
-    const data = await response.json();
-    if (!response.ok)
-      throw new Error(data.error || "요청을 처리하지 못했어요.");
+    const data = await readChatResponse(response, step => pending.progress(step));
+    const elapsedSeconds = pending.finish();
     if (reset) $("#messages").replaceChildren();
     const reply = addMessage(data.reply);
+    if (!reset) {
+      const duration = document.createElement("span");
+      duration.className = "message-duration";
+      duration.textContent = `${elapsedSeconds}초 소요`;
+      reply.querySelector(".message-label").append(duration);
+    }
     if (!reset) renderAgentSteps(reply, data.agent_steps);
     if (!reset) renderToolCalls(reply, data.tool_calls, data.research);
     $("#messages").scrollTop = $("#messages").scrollHeight;
-    if (!reset) $(".connection").textContent = "OpenAI · 응답 수신 완료";
+    if (!reset) refreshStatus();
     renderContext(data);
     $("#message").value = "";
   } catch (error) {
+    pending.finish();
     renderCriteria(previousHorizon, previousFocus, previousCoverage);
-    addMessage(error.message, "error");
+    const failure = addMessage(error.message, "error");
+    renderAgentSteps(failure, pending.steps, false);
     refreshStatus();
   } finally {
+    pending.finish();
     busy = false;
     document
       .querySelectorAll("button")
       .forEach((button) => (button.disabled = false));
+    window.chatgptAuth?.setChatBusy(false);
     $("#composer-status").textContent = "종목 · 투자 관점 · 궁금한 점";
     $("#message").focus();
   }

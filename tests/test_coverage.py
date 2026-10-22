@@ -4,14 +4,14 @@
     원본 수치를 반복하지 않는 종합 결론도 여러 자료에 연결할 수 있는지를 확인한다.
 """
 import unittest
-from mini_ai_agent.coverage import evidence_bank, declared_coverage, answer_schema, PATHS
+from mini_ai_agent.coverage import evidence_bank, declared_coverage, answer_schema, PATHS, FINANCIAL_FIELDS
 from mini_ai_agent.conversation import Horizon, RESEARCH_FOCUS
 
 
 class CoverageTests(unittest.TestCase):
     def setUp(self):
         # 매 테스트마다 독립된 RSI/MACD 자료와 뉴스 조회 실패 상태를 만든다.
-        self.bank = evidence_bank(['RSI','MACD','최근 기사'], {
+        self.bank = evidence_bank(['RSI','MACD','최근 관련 기사 및 주요 뉴스'], {
             'technicals': {'status':'ok','source':'Yahoo','rsi14':34.4,'macd_12_26_9':{'line':-2}},
             'news': {'status':'unavailable','items':[]}})
 
@@ -55,17 +55,20 @@ class CoverageTests(unittest.TestCase):
         research = {'financials':{'status':'partial','currency':'KRW','statements':{
             'yearly':{'income':[{'period_end':'2025-12-31','values':{'Total Revenue':900}}]},
             'quarterly':{'income':[{'period_end':'2026-06-30','values':{'Total Revenue':0,'Operating Income':-10}}]}}}}
-        bank = evidence_bank(['분기 매출·영업이익 변화'],research)
+        bank = evidence_bank(['분기 매출·영업이익·이익률 변화'],research)
         self.assertEqual(len(bank[0]['sources']),1)
         self.assertEqual(bank[0]['sources'][0]['value']['values']['Total Revenue'],0)
         self.assertEqual(bank[0]['sources'][0]['value']['period_end'],'2026-06-30')
 
     def test_every_criterion_has_explicit_mapping(self):
-        self.assertTrue(all(item in PATHS for items in RESEARCH_FOCUS.values() for item in items))
+        self.assertEqual(set(PATHS), {item for items in RESEARCH_FOCUS.values() for item in items})
+        self.assertEqual({key for key, paths in PATHS.items() if 'financials' in paths}, set(FINANCIAL_FIELDS))
+        self.assertEqual([len(RESEARCH_FOCUS[horizon]) for horizon in Horizon], [16, 12, 20])
+        self.assertIn('가장 최근 완료된 월봉부터 3개 이상 연속', RESEARCH_FOCUS[Horizon.MEDIUM][10])
 
     def test_short_indicators_have_separate_divergence_evidence(self):
         criteria = RESEARCH_FOCUS[Horizon.SHORT]
-        self.assertEqual(criteria[:6], ('RSI', 'RSI 상승다이버전스', 'RSI 하락다이버전스',
+        self.assertEqual(criteria[1:7], ('RSI', 'RSI 상승다이버전스', 'RSI 하락다이버전스',
                                        'MACD', 'MACD 상승다이버전스', 'MACD 하락다이버전스'))
         bank = evidence_bank(criteria, {'technicals': {'status': 'partial', 'rsi14': 40,
             'macd_12_26_9': {'line': -2},
@@ -73,14 +76,43 @@ class CoverageTests(unittest.TestCase):
                                'bearish': {'status': 'ok', 'detected': False}},
             'macd_divergence': {'bullish': {'status': 'unavailable', 'detected': None, 'reason': '부족'},
                                 'bearish': {'status': 'ok', 'detected': False}}}})
-        self.assertEqual([item['sources'][0]['path'] if item['sources'] else None for item in bank[:6]],
+        self.assertEqual([item['sources'][0]['path'] if item['sources'] else None for item in bank[1:7]],
                          ['technicals.rsi14', 'technicals.rsi_divergence.bullish', 'technicals.rsi_divergence.bearish',
                           'technicals.macd_12_26_9', None, 'technicals.macd_divergence.bearish'])
         # RSI 상승 판단을 사용해도 RSI 기본값이나 하락 판단을 사용했다고 자동 표시하지 않는다.
         result = declared_coverage('상승 다이버전스 탐지',
-                                   [{'text': '상승 다이버전스 탐지', 'source_ids': ['c1s0']}], bank)
-        self.assertEqual([row['status'] for row in result[:6]],
+                                   [{'text': '상승 다이버전스 탐지', 'source_ids': ['c2s0']}], bank)
+        self.assertEqual([row['status'] for row in result[1:7]],
                          ['not_declared', 'declared', 'not_declared', 'not_declared', 'no_data', 'not_declared'])
+
+    def test_reordering_criteria_preserves_their_sources(self):
+        research = {'technicals': {'status': 'ok', 'rsi14': 45, 'macd_12_26_9': {'line': -2}}}
+        bank = evidence_bank(['MACD', 'RSI'], research)
+        self.assertEqual([item['sources'][0]['path'] for item in bank],
+                         ['technicals.macd_12_26_9', 'technicals.rsi14'])
+
+    def test_news_does_not_substitute_for_missing_business_and_forecast_data(self):
+        criteria = ['고객·제품·지역별 매출 의존도', '사업 구조 및 주요 수익원',
+                    '실적 발표 결과와 시장 예상치의 차이', '시장·업종 대비 단기 상대강도']
+        bank = evidence_bank(criteria, {'news': {'status': 'ok', 'items': [{'title': '주가 상승'}]},
+            'technicals': {'status': 'ok', 'momentum_returns_pct': {'20': 10}}})
+        self.assertTrue(all(not item['sources'] and item['limitations'] for item in bank))
+        self.assertTrue(all(item['status'] == 'no_data' for item in declared_coverage('자료 부족', [], bank)))
+
+    def test_partial_component_limitations_survive_usage_declaration(self):
+        bank = evidence_bank(['변동성 및 ATR'], {'technicals': {
+            'status': 'ok', 'volatility_20_annualized_pct': 30}})
+        result = declared_coverage('변동성 30%', [{'text': '변동성 30%', 'source_ids': ['c0s0']}], bank)
+        self.assertEqual(result[0]['status'], 'declared')
+        self.assertIn('ATR 계산값은 미제공', result[0]['limitations'])
+
+    def test_long_growth_uses_annual_rows(self):
+        row = {'period_end': '2025-12-31', 'values': {'Net Income': 100}}
+        bank = evidence_bank(['장기 매출·영업이익·순이익 성장'], {'financials': {
+            'status': 'ok', 'currency': 'USD', 'statements': {
+                'yearly': {'income': [row]}, 'quarterly': {'income': [row]}}}})
+        self.assertEqual(len(bank[0]['sources']), 1)
+        self.assertIn('.yearly.', bank[0]['sources'][0]['path'])
 
     def test_schema_only_allows_current_source_ids(self):
         schema = answer_schema(self.bank)

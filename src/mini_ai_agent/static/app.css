@@ -1,4 +1,82 @@
 @import url("https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700;800&display=swap");
+.market-pulse { position: sticky; top: 0; z-index: 25; background: #fff; border-bottom: 1px solid #dce4e0; padding: 10px 0 12px; }
+.pulse-help { display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0; margin-left: 3px; border: 1px solid #bac8c1; border-radius: 50%; background: #fff; color: #536d62; font: 600 12px sans-serif; cursor: pointer; vertical-align: middle; }
+.pulse-help:focus-visible, .pulse-help-close:focus-visible { outline: 2px solid #327568; outline-offset: 3px; }
+.pulse-help-dialog { box-sizing: border-box; width: min(480px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); overflow-y: auto; margin: auto; padding: 24px; border: 1px solid #c8d3cd; border-radius: 8px; background: #fff; color: #263d33; text-align: left; font-size: 14px; line-height: 1.7; }
+.pulse-help-dialog::backdrop { background: #14261f66; }
+.pulse-help-dialog form { display: contents; }
+.pulse-help-dialog h2 { margin: 0 30px 16px 0; font-size: 18px; }
+.pulse-help-dialog h3 { margin: 18px 0 8px; font-size: 14px; }
+.pulse-help-dialog p { margin: 12px 0; overflow-wrap: anywhere; }
+.pulse-help-dialog dl { margin: 0; }
+.pulse-help-dialog dt { margin-top: 12px; font-weight: 600; }
+.pulse-help-dialog dd { margin: 2px 0 0; }
+.pulse-help-dialog a { color: #326a58; text-underline-offset: 3px; }
+.pulse-help-note { color: #64746c; font-size: 12px; }
+.pulse-help-close { float: right; width: 30px; height: 30px; padding: 0; border: 0; background: #f0f4f2; border-radius: 4px; color: #263d33; font-size: 23px; cursor: pointer; }
+.pulse-heading { font-size: 11px; font-weight: 600; color: #3e5148; margin-bottom: 7px; }
+.pulse-heading span { margin-left: 8px; font-size: 9px; color: #79867f; }
+.pulse-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pulse-grid article { --dial-color: #327568; min-width: 0; padding: 0 14px; border-left: 1px solid #e5eae7; text-align: center; }
+.pulse-grid article:nth-child(2) { --dial-color: #527fb2; }
+.pulse-grid article:nth-child(3) { --dial-color: #b58030; }
+.pulse-grid article:first-child { padding-left: 0; border: 0; }
+.pulse-grid h2 { font-size: 12px; margin: 0 0 5px; font-weight: 600; line-height: 1.5; }
+.pulse-grid small { display: block; color: #7a857e; font-size: 10px; font-weight: 400; }
+.pulse-dial { width: 96px; height: 96px; margin: 8px auto; padding: 4px; border-radius: 50%; background: #dce9e5; display: grid; place-items: stretch; }
+.pulse-grid article:nth-child(2) .pulse-dial { background: #e0e9f3; }
+.pulse-grid article:nth-child(3) .pulse-dial { background: #eee9df; }
+.pulse-dial > div { border-radius: 50%; background: #fff; display: flex; flex-direction: column; justify-content: center; align-items: center; min-width: 0; }
+.pulse-grid .pulse-dial.is-gauge { background: conic-gradient(var(--dial-color) var(--score-angle), #eee9df 0); }
+.pulse-value { display: block; font-size: 23px; line-height: 1.2; font-variant-numeric: tabular-nums; color: #244e45; }
+.pulse-unit { margin-top: 4px; font-size: 10px; color: #7a857e; }
+.pulse-grid [data-status="unavailable"] .pulse-dial { background: #e5e8e6; }
+.pulse-grid [data-status="stale"] .pulse-dial { opacity: .65; }
+.pulse-grid article:nth-child(2) .pulse-value { color: #426c9a; }
+.pulse-grid article:nth-child(3) .pulse-value { color: #94651f; }
+.pulse-date { font-size: 10px; margin: 5px 0; min-height: 30px; color: #68766f; overflow-wrap: anywhere; }
+.pulse-grid a, .pulse-grid summary { font-size: 10px; color: #536d62; text-underline-offset: 2px; }
+.pulse-grid details { position: relative; display: inline-block; margin-left: 8px; }
+.pulse-grid summary { cursor: pointer; }
+.pulse-grid details p { position: absolute; top: 100%; left: -70px; width: min(230px, 60vw); background: #fff; padding: 12px; border: 1px solid #c8d3cd; border-radius: 4px; box-shadow: 0 4px 12px #0001; font-size: 11px; line-height: 1.7; }
+.pulse-grid [data-status="unavailable"] .pulse-date, .pulse-grid [data-status="stale"] .pulse-date { color: #9a6036; }
+@media (max-width: 650px) {
+  .pulse-grid article { padding: 0 7px; }
+  .pulse-grid h2 { font-size: 11px; }
+  .pulse-value { font-size: 19px; }
+  .pulse-dial { width: 76px; height: 76px; padding: 3px; }
+  .pulse-grid details { margin-left: 0; display: block; }
+}
+.auth-controls[hidden], .auth-controls [hidden] { display: none; }
+.auth-controls {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  padding: 12px 28px; border-bottom: 1px solid #dce4e0; background: #f3f7f5;
+  font-size: 12px; min-width: 0;
+}
+.auth-identity { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.auth-identity span { color: #3b6755; }
+.auth-controls select { min-width: 0; max-width: 230px; flex: 1 1 140px; }
+.auth-controls button, .auth-controls select, .auth-welcome button {
+  border: 1px solid #c6d3cd; border-radius: 4px; min-height: 34px;
+  background: #fff; color: #203d30; padding: 6px 9px; font: inherit;
+}
+.auth-controls button { cursor: pointer; }
+.auth-controls button:disabled, .auth-controls select:disabled { opacity: .5; cursor: default; }
+.auth-controls button svg { width: 16px; height: 16px; display: block; }
+#auth-login { background: #172a21; color: #fff; white-space: normal; }
+.auth-controls a, .auth-welcome a { color: #21694b; text-underline-offset: 3px; }
+#auth-message { flex-basis: 100%; margin: 0; overflow-wrap: anywhere; }
+#auth-message:empty { display: none; }
+#auth-message.error { color: #ae3e3e; }
+.auth-welcome { max-width: min(420px, calc(100vw - 40px)); padding: 24px; border: 1px solid #c6d3cd; border-radius: 6px; }
+.auth-welcome::backdrop { background: #0006; }
+.auth-welcome h2 { font-size: 18px; margin: 0 0 12px; }
+.auth-welcome p { font-size: 14px; line-height: 1.7; }
+.auth-welcome button { float: right; cursor: pointer; }
+@media (max-width: 600px) {
+  .auth-controls { padding: 12px 16px; }
+  .auth-identity, #auth-profile { flex-basis: 100%; max-width: none; }
+}
 /* 공통 화면 스타일. index.html에서 market.css보다 먼저 읽는다.
    같은 선택자가 뒤 파일에도 있으면 CSS 우선순위와 선언 순서에 따라 덮어써진다.
    아래는 도움말/근거 패널 → 공통 토큰 → 레이아웃 → 대화/입력 → 반응형 순서다. */
@@ -750,6 +828,7 @@ canvas {
 }
 .message-label {
   display: flex;
+  flex-wrap: wrap;
   gap: 7px;
   align-items: center;
   font-size: 9px;
@@ -772,6 +851,61 @@ canvas {
 }
 .message.error {
   color: #b04747;
+}
+.pending-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  color: #526259;
+  white-space: normal;
+}
+.pending-status > span[role="status"] {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+.pending-spinner {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  color: var(--green);
+  animation: pending-spin 1.2s linear infinite;
+}
+.pending-elapsed, .message-duration {
+  color: #76847b;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.pending-elapsed {
+  min-width: 65px;
+}
+.pending-stage-elapsed {
+  font-size: 10px;
+  color: #76847b;
+  margin: 6px 0 0 24px;
+  font-variant-numeric: tabular-nums;
+}
+.pending-trace ol {
+  max-height: 150px;
+  overflow-y: auto;
+  padding-left: 20px;
+  font-size: 11px;
+}
+.pending-trace li {
+  margin: 5px 0;
+}
+.criterion-limitation {
+  color: #926618;
+}
+.message-duration {
+  margin-left: auto;
+}
+@keyframes pending-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pending-spinner { animation: none; }
 }
 .sr-only {
   /* 스크린리더용 이름은 남기되 시각적으로만 숨기는 접근성 패턴이다. */

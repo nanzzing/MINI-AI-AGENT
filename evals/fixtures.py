@@ -61,4 +61,7 @@ def fixed_data(mode="complete"):
             {"title": "합성 평가 기사: 실적 발표 예정, 결과는 아직 미확정", "url": "https://example.com/eval",
              "published_at": "2026-01-14T12:00:00+00:00", "publisher": "Evaluation fixture"}])))
         stack.enter_context(patch("mini_ai_agent.llm.earnings_events", return_value=metadata(items=[])))
+        stack.enter_context(patch("mini_ai_agent.llm.valuation_comparison", return_value=metadata(
+            status='partial', metrics={'trailing_pe': {'status': 'ok', 'value': 12, 'unit': '배', 'period': 'TTM'}},
+            benchmark={'status': 'unavailable'}, historical={'status': 'unavailable'})))
         yield

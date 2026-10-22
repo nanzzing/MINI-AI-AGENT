@@ -155,11 +155,11 @@ window.marketView = (() => {
         .join(" · ");
   }
   const averages = [
-    { period: 20, color: "#c37812" },
-    { period: 60, color: "#277bd0" },
-    { period: 120, color: "#9b4ab5" },
-    { period: 200, color: "#555f6d" },
-    { period: 5, color: "#c37812", monthly: true },
+    { period: 20, color: "#eab76d" },
+    { period: 60, color: "#69b5eb" },
+    { period: 120, color: "#bb96df" },
+    { period: 200, color: "#aab4ae" },
+    { period: 5, color: "#eab76d", monthly: true },
   ];
   function averageLegend(param) {
     // 이평선 숫자 범례도 같은 날짜 이벤트를 사용해 차트 선과 표시 숫자를 맞춘다.
@@ -176,13 +176,13 @@ window.marketView = (() => {
     chart = LightweightCharts.createChart(el("market-chart"), {
       autoSize: true,
       layout: {
-        background: { color: "#f5f6f7" },
-        textColor: "#829087",
+        background: { color: "#111513" },
+        textColor: "#a3b5a9",
         fontSize: 10,
       },
       grid: {
-        vertLines: { color: "#e7ece9" },
-        horzLines: { color: "#e7ece9" },
+        vertLines: { color: "#29332c" },
+        horzLines: { color: "#29332c" },
       },
       rightPriceScale: { borderVisible: false },
       // 기본 최소 봉 간격(0.5px)은 수십 년 이력을 한 화면에 담지 못한다.
@@ -190,11 +190,11 @@ window.marketView = (() => {
       localization: { locale: "ko-KR" },
     });
     candles = chart.addCandlestickSeries({
-      upColor: "#21835e",
-      downColor: "#d67570",
+      upColor: "#71edbd",
+      downColor: "#e88d98",
       borderVisible: false,
-      wickUpColor: "#21835e",
-      wickDownColor: "#d67570",
+      wickUpColor: "#71edbd",
+      wickDownColor: "#e88d98",
     });
     candles
       .priceScale()
@@ -303,13 +303,13 @@ window.marketView = (() => {
     indicatorChart = LightweightCharts.createChart(surface, {
       autoSize: true,
       layout: {
-        background: { color: "#f5f6f7" },
-        textColor: "#687a70",
+        background: { color: "#111513" },
+        textColor: "#a3b5a9",
         fontSize: 10,
       },
       grid: {
-        vertLines: { color: "#e7ece9" },
-        horzLines: { color: "#e7ece9" },
+        vertLines: { color: "#29332c" },
+        horzLines: { color: "#29332c" },
       },
       rightPriceScale: { minimumWidth: 70 },
       timeScale: { borderVisible: false, minBarSpacing: 0.001, lockVisibleTimeRangeOnResize: true },
@@ -320,9 +320,9 @@ window.marketView = (() => {
       .applyOptions({ lockVisibleTimeRangeOnResize: true });
     indicatorLines = {};
     for (const [key, color] of Object.entries({
-      rsi: "#9b4ab5",
-      macd: "#277bd0",
-      signal: "#c37812",
+      rsi: "#bb96df",
+      macd: "#69b5eb",
+      signal: "#eab76d",
     }))
       indicatorLines[key] = indicatorChart.addLineSeries({
         color,

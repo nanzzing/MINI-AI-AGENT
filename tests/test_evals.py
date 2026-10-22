@@ -43,6 +43,8 @@ class EvaluationTests(unittest.TestCase):
             result = agent.execute_tool("get_financials", "{}", agent.state, resources)
             self.assertEqual(result["status"], "ok")
             self.assertIn("get_financials", agent.reusable_tools(agent.state, resources))
+            valuation = agent.execute_tool('get_valuation_comparison', '{}', agent.state, resources)
+            self.assertEqual(valuation['source'], 'SYNTHETIC EVALUATION FIXTURE')
 
     def test_fixture_partial_and_unavailable(self):
         self.assertEqual(finances({}, "장기", "partial")["status"], "partial")

@@ -21,11 +21,32 @@
           && (!isSentiment || (data.value >= 0 && data.value <= 100));
         node.querySelector('.pulse-value').textContent = available
           ? data.value.toLocaleString('ko-KR', {maximumFractionDigits: isSentiment ? 0 : 2}) : '—';
-        const dial = node.querySelector('.pulse-dial');
-        // 고정 범위가 있는 CNN 점수만 게이지다. VIX/버핏은 단순 숫자 테두리다.
-        dial.classList.toggle('is-gauge', isSentiment && available);
+        const dial = node.querySelector(isSentiment ? '.sentiment-position' : '.pulse-dial');
+        if (isSentiment) {
+          const marker = node.querySelector('.sentiment-marker');
+          marker.hidden = !available;
+          node.querySelector('.sentiment-score').hidden = !available;
+          // 공급자 분류를 강조하되 조회 불가일 때 이전 강조를 남기지 않는다.
+          document.querySelectorAll('.sentiment-labels [data-rating], .sentiment-ranges [data-rating]').forEach(item => {
+            const current = available && item.dataset.rating === data.rating;
+            item.classList.toggle('is-current', current);
+            if (current) item.setAttribute('aria-current', 'true');
+            else item.removeAttribute('aria-current');
+            const tag = item.querySelector('.sentiment-current-tag');
+            if (tag) tag.hidden = !current;
+          });
+          document.getElementById('sentiment-current').textContent = available
+            ? `${data.value.toLocaleString('ko-KR', {maximumFractionDigits: 2})}점 · ${data.rating || '분류 미제공'} · ${data.period || data.as_of || ''} 기준${data.status === 'stale' ? ' · 갱신 실패, 이전 자료' : ''}`
+            : '현재 구간을 확인할 수 없습니다.';
+          if (available) {
+            node.querySelector('.sentiment-position').style.setProperty('--score-position', `${data.value}%`);
+            // 색상은 공급자의 분류를 따른다. 미확인 분류를 임의로 단정하지 않는다.
+            const colors = {'극도의 공포':'#e5807b', '공포':'#eda663', '중립':'#a0a9ae', '탐욕':'#a3cc83', '극도의 탐욕':'#57bb92'};
+            node.style.setProperty('--sentiment-color', colors[data.rating] || '#a0a9ae');
+          }
+        }
+        // CNN 점수에만 접근성 범위를 부여한다. 위치는 아래 구간 바에 표시한다.
         if (isSentiment && available) {
-          dial.style.setProperty('--score-angle', `${data.value * 3.6}deg`);
           dial.setAttribute('role', 'meter');
           dial.setAttribute('aria-label', 'CNN 주식 공포·탐욕지수');
           dial.setAttribute('aria-valuemin', '0');
@@ -36,7 +57,7 @@
         }
         const period = data.period || data.as_of || '';
         node.querySelector('.pulse-date').textContent = available
-          ? `${period} 기준${data.rating ? ` · ${data.rating}` : ''}${data.status === 'stale' ? ' · 갱신 실패' : ''}`
+          ? `${period} 기준${!isSentiment && data.rating ? ` · ${data.rating}` : ''}${data.status === 'stale' ? ' · 갱신 실패' : ''}`
           : (data.message || '조회 불가');
         node.title = data.description || data.message || '';
         node.dataset.status = data.status;
@@ -46,6 +67,10 @@
         label.textContent = label.textContent.includes('기준')
           ? label.textContent.replace(/ · 갱신 실패$/, '') + ' · 갱신 실패' : '조회 불가';
         node.title = '연결 실패. 표시된 값이 있으면 이전 기준일의 자료입니다.';
+        if (node.dataset.indicator === 'fear_greed') {
+          const current = document.getElementById('sentiment-current');
+          if (!current.textContent.includes('갱신 실패')) current.textContent += ' · 갱신 실패, 이전 자료';
+        }
       }
     }));
     loading = false;

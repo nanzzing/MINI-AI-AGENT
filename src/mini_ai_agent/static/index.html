@@ -110,14 +110,37 @@
               <details><summary>산식·범위</summary><p>미국 비금융기업 주식가치 ÷ 같은 분기 명목 GDP(연율) × 100. 전체 상장시장 시가총액과 범위가 다릅니다. <a href="https://fred.stlouisfed.org/series/GDP" target="_blank" rel="noopener noreferrer">GDP 원자료</a></p></details>
             </article>
             <article data-indicator="fear_greed">
-              <h2>공포·탐욕 <small>CNN · OANOR 제공</small></h2>
-              <div class="pulse-dial"><div><strong class="pulse-value">—</strong><span class="pulse-unit">/ 100</span></div></div>
-              <p class="pulse-date">조회 중</p>
-              <a href="https://www.cnn.com/markets/fear-and-greed" target="_blank" rel="noopener noreferrer">CNN ↗</a>
-              <a href="https://www.oanor.com/api/stockfeargreed-api" target="_blank" rel="noopener noreferrer">OANOR ↗</a>
+              <h2>공포·탐욕 <button type="button" class="pulse-help" data-help="fear-help" aria-label="공포·탐욕 구간 설명" aria-haspopup="dialog" title="공포·탐욕 구간 설명"><i data-lucide="info"></i></button><small>CNN · OANOR 제공</small></h2>
+              <div class="sentiment-scale">
+                <div class="sentiment-position"><strong class="pulse-value sentiment-score" hidden>—</strong><span class="sentiment-marker" hidden></span></div>
+                <div class="sentiment-bands" aria-label="공포·탐욕 구간">
+                  <button type="button" data-help="fear-help" title="0 이상 ~ 25 미만 · 극도의 공포" aria-label="극도의 공포: 0 이상 25 미만, 구간 설명 열기"></button>
+                  <button type="button" data-help="fear-help" title="25 이상 ~ 45 미만 · 공포" aria-label="공포: 25 이상 45 미만, 구간 설명 열기"></button>
+                  <button type="button" data-help="fear-help" title="45 이상 ~ 55 이하 · 중립" aria-label="중립: 45 이상 55 이하, 구간 설명 열기"></button>
+                  <button type="button" data-help="fear-help" title="55 초과 ~ 75 미만 · 탐욕" aria-label="탐욕: 55 초과 75 미만, 구간 설명 열기"></button>
+                  <button type="button" data-help="fear-help" title="75 이상 ~ 100 · 극도의 탐욕" aria-label="극도의 탐욕: 75 이상 100 이하, 구간 설명 열기"></button>
+                </div>
+                <div class="sentiment-ticks" aria-hidden="true"><span>0</span><span style="left:25%">25</span><span style="left:45%">45</span><span style="left:55%">55</span><span style="left:75%">75</span><span>100</span></div>
+                <div class="sentiment-labels"><span data-rating="극도의 공포">극도의 공포</span><span data-rating="공포">공포</span><span data-rating="중립">중립</span><span data-rating="탐욕">탐욕</span><span data-rating="극도의 탐욕">극도의 탐욕</span></div>
+              </div>
+              <div class="sentiment-footer"><p class="pulse-date">조회 중</p><span><a href="https://www.cnn.com/markets/fear-and-greed" target="_blank" rel="noopener noreferrer">CNN ↗</a> · <a href="https://www.oanor.com/api/stockfeargreed-api" target="_blank" rel="noopener noreferrer">OANOR ↗</a></span></div>
             </article>
           </div>
         </section>
+        <dialog id="fear-help" class="pulse-help-dialog" aria-labelledby="fear-help-title">
+          <form method="dialog"><button class="pulse-help-close" aria-label="도움말 닫기" title="닫기">×</button></form>
+          <h2 id="fear-help-title">공포·탐욕 구간 안내</h2>
+          <p>0~100점으로 미국 주식시장의 심리를 나타냅니다. 낮을수록 공포, 높을수록 탐욕에 가깝습니다.</p>
+          <p id="sentiment-current" role="status">현재 지수 조회 중</p>
+          <dl class="sentiment-ranges">
+            <div data-rating="극도의 공포"><dt>0 이상 ~ 25 미만</dt><dd>극도의 공포 <span class="sentiment-current-tag" hidden>현재</span></dd></div>
+            <div data-rating="공포"><dt>25 이상 ~ 45 미만</dt><dd>공포 <span class="sentiment-current-tag" hidden>현재</span></dd></div>
+            <div data-rating="중립"><dt>45 이상 ~ 55 이하</dt><dd>중립 <span class="sentiment-current-tag" hidden>현재</span></dd></div>
+            <div data-rating="탐욕"><dt>55 초과 ~ 75 미만</dt><dd>탐욕 <span class="sentiment-current-tag" hidden>현재</span></dd></div>
+            <div data-rating="극도의 탐욕"><dt>75 이상 ~ 100</dt><dd>극도의 탐욕 <span class="sentiment-current-tag" hidden>현재</span></dd></div>
+          </dl>
+          <p class="pulse-help-note">시장 심리를 보여주는 참고 지표이며 매수·매도 신호가 아닙니다. 구간은 참고용이며 현재 상태는 공급자가 반환한 분류를 우선 표시합니다. 위치 표시는 반올림 전 점수를 사용합니다.</p>
+        </dialog>
         <dialog id="vix-help" class="pulse-help-dialog" aria-labelledby="vix-help-title">
           <form method="dialog"><button class="pulse-help-close" aria-label="도움말 닫기" title="닫기">×</button></form>
           <h2 id="vix-help-title">VIX는 무엇인가요?</h2>

@@ -1,6 +1,6 @@
 """한국투자증권 종목 마스터를 내려받고 로컬 종목 검색에 사용한다.
 
-refresh는 수동 갱신 명령에서 실행하고, 채팅 중에는 저장된 JSON만 검색한다.
+refresh는 수동 갱신 명령에서 실행한다. 명시적 검색은 로컬 실패 시 외부 후보를 조회한다.
 여기서 다루는 자료는 종목 식별 정보이며 시세·재무 데이터는 포함하지 않는다.
 """
 
@@ -11,6 +11,10 @@ import io
 import json
 from pathlib import Path
 import re
+from copy import deepcopy
+from threading import RLock
+from time import monotonic
+import yfinance as yf
 from urllib.request import urlopen
 from zipfile import ZipFile
 
@@ -33,6 +37,87 @@ ALIASES = {"삼전": "005930", "애플": "AAPL", "테슬라": "TSLA", "엔비디
 # 기술 지표와 겹치는 영문 약어는 채팅의 종목 전환을 강제하는 근거로 쓰지 않는다.
 # 실제 해당 종목을 검색하는 도구/검색창에서는 그대로 검색할 수 있다.
 INDICATOR_TICKERS = {"rsi", "macd", "ma", "sma", "ema", "atr", "adx", "obv", "cci", "roc"}
+_DISCOVERED = {}
+_SEARCH_CACHE = {}
+_SEARCH_LOCK = RLock()
+
+
+def ticker_key(code):
+    return re.sub(r'[.\-]', '/', code.casefold())
+
+
+def known_stocks():
+    """번들 목록과 외부에서 확인한 종목을 합친다. 외부 종목은 프로세스 내 24시간 보관."""
+    rows = list(load_catalog()['stocks'])
+    with _SEARCH_LOCK:
+        expired = [key for key, (stamp, _) in _DISCOVERED.items() if monotonic() - stamp >= 86400]
+        for key in expired:
+            del _DISCOVERED[key]
+        keys = {(row['exchange'], ticker_key(row['code'])) for row in rows}
+        rows.extend(deepcopy(row) for _, row in _DISCOVERED.values()
+                    if (row['exchange'], ticker_key(row['code'])) not in keys)
+    return rows
+
+
+def search_stocks(query):
+    """명시적 검색만 외부 조회한다. 일반 대화의 자동 종목 판정은 로컬에 머문다."""
+    if not isinstance(query, str) or not 1 <= len(query.strip()) <= 200:
+        raise ValueError('검색어는 1~200자여야 합니다.')
+    query = query.strip()
+    matches = find_stocks(query)
+    if not matches:
+        compact = re.sub(r'\s+', '', query.casefold())
+        if len(compact) >= 2:
+            matches = [row for row in known_stocks() if compact in re.sub(r'\s+', '', row['name'].casefold())]
+    if matches:
+        return {'stocks': matches[:20], 'status': 'ok', 'source': 'KIS directory + verified search cache',
+                'fetched_at': load_catalog()['fetched_at']}
+    key = query.casefold()
+    with _SEARCH_LOCK:
+        item = _SEARCH_CACHE.get(key)
+        if item and monotonic() - item[0] < item[1]:
+            return deepcopy(item[2])
+    result = {'stocks': [], 'source': 'Yahoo Finance Search',
+              'fetched_at': datetime.now(timezone.utc).isoformat()}
+    try:
+        quotes = yf.Search(query, max_results=20, news_count=0, lists_count=0,
+                           include_cb=False, recommended=0, timeout=10).quotes
+        rows = {}
+        for quote in quotes:
+            if not isinstance(quote, dict) or quote.get('quoteType') != 'EQUITY':
+                continue
+            symbol, exchange = quote.get('symbol', ''), quote.get('exchange', '')
+            if not isinstance(symbol, str):
+                continue
+            if exchange in {'KSC', 'KOE'}:
+                market, suffix = ('KOSPI', '.KS') if exchange == 'KSC' else ('KOSDAQ', '.KQ')
+                if not re.fullmatch(r'\d{6}' + re.escape(suffix), symbol):
+                    continue
+                code = symbol[:-3]
+            else:
+                market = {'NYQ': 'NYSE', 'NMS': 'NASDAQ', 'NGM': 'NASDAQ', 'NCM': 'NASDAQ', 'ASE': 'NYSE American'}.get(exchange)
+                if not market or not re.fullmatch(r'[A-Z][A-Z0-9]{0,9}(?:[.-][A-Z0-9]{1,4})?', symbol):
+                    continue
+                code = ticker_key(symbol).upper()
+            name = quote.get('longname') or quote.get('shortname')
+            if not isinstance(name, str) or not name.strip() or len(name) > 200:
+                continue
+            rows[(market, code)] = {'name': name.strip(), 'code': code, 'exchange': market}
+        result.update(stocks=list(rows.values()), status='ok' if rows else 'empty')
+        with _SEARCH_LOCK:
+            for identity, row in rows.items():
+                if len(_DISCOVERED) >= 512:
+                    _DISCOVERED.pop(next(iter(_DISCOVERED)))
+                _DISCOVERED[identity] = (monotonic(), row)
+        if not rows:
+            result['message'] = '후보가 없습니다. 영문 회사명이나 정확한 티커로 재검색하세요. A/B·우선주는 구분해야 합니다.'
+    except Exception:
+        result.update(status='unavailable', message='외부 종목 검색에 실패했습니다. 종목이 없다는 뜻은 아닙니다. 영문명·티커로 재시도하거나 잠시 후 확인하세요.')
+    with _SEARCH_LOCK:
+        if len(_SEARCH_CACHE) >= 256:
+            _SEARCH_CACHE.pop(next(iter(_SEARCH_CACHE)))
+        _SEARCH_CACHE[key] = (monotonic(), 30 if result['status'] == 'unavailable' else 600, deepcopy(result))
+    return result
 
 
 def parse_master(content: str, exchange: str, tail_length: int | None) -> list[dict]:
@@ -107,10 +192,33 @@ def find_stocks(message: str, *, allow_indicator_tickers: bool = True) -> list[d
     '$RSI', '티커 RSI', 'NYSE:RSI'처럼 종목임을 명시한 표기는 계속 허용한다.
     """
     normalized = message.casefold()
-    # 대소문자 차이만 정규화한다. 오타 교정·의미 검색·외부 검색은 하지 않는 규칙 검색이다.
+    rows = known_stocks()
+    compact = re.sub(r'\s+', '', normalized)
+    matches = []
+    for row in rows:
+        name = re.sub(r'\s+', '', row['name'].casefold())
+        index = compact.find(name)
+        if index < 0:
+            continue
+        # 짧은 영문 회사명(NC 등)을 영단어 내부에서 인식하지 않는다.
+        if name[0].isascii() and name[0].isalnum() and index and compact[index - 1].isascii() and compact[index - 1].isalnum():
+            continue
+        end = index + len(name)
+        if name[-1].isascii() and name[-1].isalnum() and end < len(compact) and compact[end].isascii() and compact[end].isalnum():
+            continue
+        matches.append(row)
+    if matches:
+        longest = max(len(re.sub(r'\s+', '', row['name'])) for row in matches)
+        matches = [row for row in matches if len(re.sub(r'\s+', '', row['name'])) == longest]
+    # 회사명의 Class B를 별도 티커 B로 잘못 읽지 않도록 이름 부분을 가린다.
+    remaining = normalized
+    for row in matches:
+        pattern = r'\s*'.join(re.escape(char) for char in re.sub(r'\s+', '', row['name'].casefold()))
+        remaining = re.sub(pattern, ' ', remaining)
+    # 대소문자·공백·티커 구분자를 정규화한다. 이 자동 판정 함수는 외부 검색을 하지 않는다.
     # 반환 타입을 항상 리스트로 유지해 0개/1개/여러 후보를 호출자가 구분할 수 있게 한다.
     # 티커 중간의 점·하이픈 등은 유지한다. 별칭도 코드 후보로 바꾸어 같은 검색에 사용한다.
-    codes = set(re.findall(r"(?<![a-z0-9])[a-z0-9]+(?:[.\-/][a-z0-9]+)*(?![a-z0-9])", normalized))
+    codes = set(re.findall(r"(?<![a-z0-9])[a-z0-9]+(?:[.\-/][a-z0-9]+)*(?![a-z0-9])", remaining))
     if not allow_indicator_tickers:
         exchanges = r"(?:nyse(?:\s+american)?|nasdaq|amex|kospi|kosdaq|konex)"
         for code in codes & INDICATOR_TICKERS:
@@ -124,16 +232,10 @@ def find_stocks(message: str, *, allow_indicator_tickers: bool = True) -> list[d
     for alias, code in ALIASES.items():
         if alias in normalized:
             codes.add(code.casefold())
-    rows = load_catalog()["stocks"]
-    exact = [row for row in rows if row["code"].casefold() in codes]
-    if exact:
-        return exact
-    matches = [row for row in rows if row["name"].casefold() in normalized]
-    if matches:
-        # '삼성전자우'에 '삼성전자'도 포함되므로 가장 긴 이름을 우선해 우선주를 구분한다.
-        longest = max(len(row["name"]) for row in matches)
-        return [row for row in matches if len(row["name"]) == longest]
-    return []
+    codes = {ticker_key(code) for code in codes}
+    exact = [row for row in rows if ticker_key(row["code"]) in codes]
+    identities = {(row['exchange'], row['code']): row for row in matches + exact}
+    return list(identities.values())
 
 
 if __name__ == "__main__":

@@ -475,7 +475,27 @@ textarea::placeholder, #stock-query::placeholder { color: #9dadA2; }
 .context-tags span { border-color: #3b4b40; color: #b7c9bf; }
 .research-panel h2 { font-size: 24px; color: #eaf2ed; }
 .chart-section { border-color: var(--line); }
-#market-chart { height: 340px; }
+#market-chart { height: 340px; position: relative; }
+.ma-alignment-badge {
+  position: absolute;
+  z-index: 8;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 7px 11px;
+  border: 1px solid #71edbd;
+  border-radius: 6px;
+  background: #14352b;
+  color: #b5ffe0;
+  box-shadow: 0 3px 14px #0007;
+  white-space: nowrap;
+  letter-spacing: 0;
+}
+.ma-alignment-badge[hidden] { display: none; }
+.ma-alignment-badge strong { font-size: 13px; line-height: 1.2; }
+.ma-alignment-badge span { font-size: 10px; line-height: 1.3; color: #b2d5c6; }
 #stock-search { background: #1c2720; border-color: #425c4b; }
 .chart-controls button, .indicator-controls select, .drawing-toolbar button, .drawing-toolbar input[type="color"] { background: #222d26; border-color: #415547; color: #c7d9ce; }
 .chart-controls button[aria-pressed="true"], .drawing-toolbar button[aria-pressed="true"] { color: #132d20; background: #71edbd; border-color: #71edbd; }

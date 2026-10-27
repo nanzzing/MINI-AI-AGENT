@@ -25,6 +25,7 @@ window.marketView = (() => {
     bandToggle,
     syncing = false;
   let crosshairSyncing = false,
+    alignmentBadge,
     closeGuide,
     drawingTools;
   const dateKey = (time) =>
@@ -71,6 +72,7 @@ window.marketView = (() => {
       else target.clearCrosshairPosition();
       const priceParam = { time: time || undefined, seriesData: pricePoints };
       averageLegend(priceParam);
+      updateAlignmentBadge(priceParam);
       if (candle)
         el("chart-legend").textContent =
           `${time}  시 ${number(candle.open)} · 고 ${number(candle.high)} · 저 ${number(candle.low)} · 종 ${number(candle.close)}`;
@@ -161,6 +163,25 @@ window.marketView = (() => {
     { period: 200, color: "#aab4ae" },
     { period: 5, color: "#eab76d", monthly: true },
   ];
+  function updateAlignmentBadge(param) {
+    alignmentBadge.hidden = true;
+    if (!param?.time || range === "MONTH") return;
+    const daily = averages.filter((item) => !item.monthly);
+    const values = daily.map((item) => param.seriesData.get(item.series)?.value);
+    // 같은 날짜의 네 SMA가 모두 준비된 경우에만 엄격한 정배열을 판정한다.
+    if (!values.every(Number.isFinite) ||
+        !values.slice(1).every((value, i) => values[i] > value)) return;
+    const x = chart.timeScale().timeToCoordinate(param.time);
+    const y = daily[0].series.priceToCoordinate(values[0]);
+    const host = el("market-chart");
+    const plotWidth = host.clientWidth - chart.priceScale("right").width();
+    if (x === null || y === null || x < 0 || x > plotWidth || y < 0 || y > host.clientHeight - 30) return;
+    alignmentBadge.hidden = false;
+    alignmentBadge.style.left = `${Math.max(6, Math.min(x - alignmentBadge.offsetWidth / 2, plotWidth - alignmentBadge.offsetWidth - 6))}px`;
+    alignmentBadge.style.top = `${Math.max(6, y - alignmentBadge.offsetHeight - 16)}px`;
+    alignmentBadge.dataset.time = dateKey(param.time);
+    alignmentBadge.setAttribute("aria-label", `${dateKey(param.time)} 정배열: 20일선 > 60일선 > 120일선 > 200일선`);
+  }
   function averageLegend(param) {
     // 이평선 숫자 범례도 같은 날짜 이벤트를 사용해 차트 선과 표시 숫자를 맞춘다.
     for (const item of averages) {
@@ -189,6 +210,17 @@ window.marketView = (() => {
       timeScale: { borderVisible: false, minBarSpacing: 0.001, lockVisibleTimeRangeOnResize: true },
       localization: { locale: "ko-KR" },
     });
+    alignmentBadge = document.createElement("div");
+    alignmentBadge.className = "ma-alignment-badge";
+    alignmentBadge.hidden = true;
+    const badgeTitle = document.createElement("strong");
+    badgeTitle.textContent = "정배열!";
+    const badgeDetail = document.createElement("span");
+    badgeDetail.textContent = "20 > 60 > 120 > 200일";
+    alignmentBadge.append(badgeTitle, badgeDetail);
+    el("market-chart").append(alignmentBadge);
+    chart.timeScale().subscribeVisibleLogicalRangeChange(() => { alignmentBadge.hidden = true; });
+    new ResizeObserver(() => { alignmentBadge.hidden = true; }).observe(el("market-chart"));
     candles = chart.addCandlestickSeries({
       upColor: "#71edbd",
       downColor: "#e88d98",
@@ -399,6 +431,7 @@ window.marketView = (() => {
     // 봉 주기 전환/새 가격 수신 시 호출한다. 자료 계산과 보이는 범위 설정을 구분한다.
     // 전체 이력으로 지표를 계산한 다음 3개월/1년 등의 보이는 범위만 좁힌다.
     if (!chart) init();
+    alignmentBadge.hidden = true;
     const visible = range === "MONTH" ? monthly() : bars;
     candles.setData(visible);
     closeGuide.setData(
@@ -498,8 +531,8 @@ window.marketView = (() => {
         clear();
         el("chart-status").textContent =
           result.status === "ambiguous"
-            ? "종목코드로 검색해 주세요."
-            : "일치하는 종목이 없어요.";
+            ? `후보: ${(result.matches || []).slice(0, 5).map((stock) => `${stock.name} (${stock.code})`).join(" · ")} — 종목코드로 검색해 주세요.`
+            : result.message || "일치하는 종목이 없어요. 영문명 또는 티커로 검색해 주세요.";
         return;
       }
       if (
@@ -559,8 +592,14 @@ window.marketView = (() => {
     target.replaceChildren();
     const note = document.createElement("p");
     note.className = "data-warning";
-    note.textContent = `${data.source} · ${data.currency || "통화 미확인"} · 금액: 통화 기본 단위 (EPS·주식수 별도) · ${(data.missing || []).join(" / ") || "요청 범위 수집 완료"}`;
+    note.textContent = `${data.source} · ${data.currency || "통화 미확인"} · 금액: 통화 기본 단위 (EPS·주식수 별도) · ${data.message || (data.missing || []).join(" / ") || "요청 범위 수집 완료"}`;
     target.append(note);
+    if (data.note) {
+      const explanation = document.createElement("p");
+      explanation.className = "data-warning";
+      explanation.textContent = data.note;
+      target.append(explanation);
+    }
     const labels = {
       income: "손익계산서",
       balance: "재무상태표",
@@ -576,7 +615,7 @@ window.marketView = (() => {
         wrap.className = "financial-table-wrap";
         const table = document.createElement("table"),
           header = table.insertRow();
-        ["항목", ...rows.map((row) => row.period_end)].forEach((text) => {
+        ["항목", ...rows.map((row) => `${row.period_end}${row.scope ? ` · ${row.scope === "CFS" ? "연결" : "별도"}` : ""}`)].forEach((text) => {
           const th = document.createElement("th");
           th.textContent = text;
           header.append(th);
@@ -597,6 +636,20 @@ window.marketView = (() => {
         }
         wrap.append(table);
         details.append(wrap);
+        if (data.source === "OpenDART") {
+          const references = document.createElement("p");
+          references.className = "data-warning";
+          for (const row of rows) {
+            if (!/^\d{14}$/.test(row.receipt_no || "")) continue;
+            const link = document.createElement("a");
+            link.href = `https://dart.fss.or.kr/dsaf001/main.do?rcpNo=${row.receipt_no}`;
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            link.textContent = `${row.period_end} 공시 원문`;
+            references.append(link, document.createTextNode(" · "));
+          }
+          details.append(references);
+        }
         target.append(details);
       }
   }

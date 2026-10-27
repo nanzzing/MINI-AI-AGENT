@@ -93,12 +93,42 @@ lookup; missing provider fields do not cause repeated requests. Results are cach
 by stock and exchange for five minutes and removed from model context when moving
 to short/medium research. The eval fixture replaces this provider too.
 
-`valuation.py` reads Yahoo Finance company trailing/forward P/E, P/B, ROE and
+For US stocks, `valuation.py` reads Yahoo Finance company trailing/forward P/E, P/B, ROE and
 EV/EBITDA when supplied. FCF yield uses provider free cash flow / market cap only
 when both currencies match. Missing/non-finite values are not zero; nonpositive
 valuation multiples are unavailable, while negative ROE/FCF remain valid data.
 Provider periods are explicitly marked unknown where unverified. Quote time is
 not the earnings/estimate date. No adjusted chart prices are used for these ratios.
+
+For Korean stocks, `korean_valuation.py` calculates TTM earnings P/E, latest
+book-value P/B and TTM ROE from OpenDART. It never calls Yahoo `get_info`.
+P/E sums parent-attributable profit for the latest four consecutive standalone
+quarters, anchored at the latest reported quarter. Missing/duplicate quarters,
+mixed currencies/scopes or missing parent profit block P/E; it never substitutes
+older quarters or annual earnings. Q4 is already derived by the DART adapter
+as annual minus nine-month cumulative income, and is not differenced again. ROE
+uses the same TTM profit divided by average parent equity at the latest quarter
+end and exactly one year earlier. Missing, duplicate or mixed-basis equity blocks
+ROE; annual equity can only fill an exact December-end match. Annual financial
+history remains available separately for long-term trend analysis. Separate
+statements use separate net income/equity; CFS/OFS are never mixed. Nonpositive
+profit blocks P/E, nonpositive equity blocks P/B/ROE, but negative ROE is valid.
+
+P/E and P/B are **whole-company estimates**, not common-share EPS/BPS multiples:
+sum each share class's recent dividend-unadjusted closing price times its DART
+report-date outstanding shares (excluding treasury stock). Share counts are not
+live: later issuance, retirement and treasury changes are unverified. Price dates
+must match across classes; splits/mergers after the share-count date block these
+estimates. Prices still come from Yahoo's chart API, so price access can fail
+independently while DART-only ROE remains available.
+
+`data/kr_share_classes.json` contains verified multi-class ticker mappings with
+an issuer source URL (initially Samsung common/preferred). Other issuers with only
+ordinary shares need no extra mapping. Unmapped preferred/multiple classes are
+not priced as ordinary shares: add an independently verified mapping before use.
+Numbers are fetched, never hardcoded. Forward P/E, EV/EBITDA and FCF yield are
+currently unavailable on this Korean path rather than falling back to Yahoo
+financial estimates. Formula, inputs, periods and filing links accompany metrics.
 
 Industry averages (including forward P/E), peer comparisons and historical
 valuation ranges are **not connected yet**. The tool returns explicit unavailable
@@ -280,6 +310,83 @@ Refresh replaces the local snapshot only after all six downloads and validation
 succeed. No API key is needed for these public master files.
 Keep actual API keys in a local `.env` file, never in source code.
 
+## Stock Search Fallback
+
+Chat stock resolution is model-driven: interpret a nickname or typo, call
+`search_stock` with the likely company name or ticker, inspect the returned
+candidates, then call `set_research_context`. New identities must have been
+returned by search in this conversation; the shared catalog alone does not
+authorize them. Search candidates survive clarification turns and are cleared
+on conversation reset. Follow-up questions can reuse the current verified stock.
+The prompt asks for clarification when the company or share class is ambiguous,
+and limits alternate spelling searches instead of guessing indefinitely.
+Typo interpretation depends on the model; a verified ticker does not by itself
+prove that the model correctly understood the user's intended company.
+
+Explicit `search_stock` and chart searches use the local KIS catalog first, then
+Yahoo Finance Search on a miss. Ordinary chat context detection remains local.
+Whitespace in company names and US class ticker separators (`BRK/B`, `BRK.B`,
+`BRK-B`) are normalized. Partial company names return candidates, not an arbitrary
+share class. If a Korean transliteration is not found, the model can search an
+English name or ticker, but must confirm the returned identity before research.
+
+External results are restricted to EQUITY and supported Korean/US exchanges;
+ETFs, unsupported exchanges and malformed symbols are excluded. Verified
+candidates enter a bounded in-memory directory for 24 hours, shared by tool
+context validation and chart/financial lookup. Search responses cache for ten
+minutes (failures: 30 seconds); no key or full-catalog download is needed at
+startup. Restarting clears discoveries. Yahoo may reject requests from hosting
+networks; a search failure is reported separately from no candidates. Discovery
+does not guarantee prices or financials exist for the instrument.
+
+## Korean Financials: OpenDART
+
+KOSPI/KOSDAQ/KONEX financial statements now use OpenDART. US financials remain
+on Yahoo. Prices/charts remain on Yahoo. Korean long-term valuation now calculates
+P/E, P/B and ROE from DART and prices as described above; forward PER and industry
+benchmarks remain unavailable.
+
+Put your issued key in the project-root `.env` for local use:
+
+```dotenv
+DART_API_KEY=your-issued-key
+```
+
+On Render, add the same variable name in Environment and redeploy. Never commit
+the actual key. Environment values override `.env`; `.env.example` is not read
+as configuration. Restart the local server after changing code/configuration.
+No key is required in the browser, no extra package is needed, and no LLM is
+called to fetch statements. Missing/invalid keys, IP restrictions, quota and
+maintenance failures produce explicit errors; there is no silent Yahoo fallback.
+
+- Short: latest 4 quarters. Medium: 3 annual periods + 8 quarters. Long: 5 annual
+  periods + 8 quarters. Latest means available filings, not future projections.
+- The official corporation-code ZIP maps the exact stock code to a DART corp
+  code. Company/catalog cache: 24 hours; reports: one hour, shared across horizons.
+  Preferred shares without an exact mapping are not guessed from another ticker.
+- This first adapter supports KRW standard accounts for **December year-end**
+  companies. Other fiscal months, unverified currencies, ambiguous/unsupported
+  custom accounts and historical fiscal-year changes are not guessed.
+- Consolidated (CFS) first; separate (OFS) only on API no-data code 013. Every
+  returned period retains the scope and original filing links.
+- Interim income uses DART's three-month amount. Q2/Q3/Q4 cash flow uses the
+  difference between same-year cumulative filings; Q4 income is annual minus
+  nine-month cumulative. Scope mismatch or missing prior filings leaves a gap.
+  Restatement differences between filings may affect these derived quarters.
+  EPS is never derived by subtracting annual and nine-month EPS.
+- FCF is operating cash flow minus gross PPE and intangible purchase outflows,
+  only when both outflows are available. Missing amounts are not zero.
+  Total liabilities are not interest-bearing debt; total equity and parent equity
+  are distinct. No automated market valuation or forecast EPS is added here.
+- Safe logs: `dart_request_failure` (endpoint/status/type, no URL or key) and
+  `dart_api_failure` (DART status code). Per-request timeout 15 seconds, overall
+  collection budget 90 seconds checked between requests. Completed periods are
+  retained as partial data if later requests fail.
+
+Official references: [whole statements](https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS003&apiId=2019020),
+[corporation codes](https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019018),
+[company profile / fiscal month](https://opendart.fss.or.kr/guide/detail.do?apiGrpCd=DS001&apiId=2019002).
+
 ## Yahoo diagnostics: local vs Render
 
 Run the same symbol on both hosts, near the same time. Deploy this code before
@@ -297,15 +404,17 @@ Render Shell (not your local terminal):
 python -m mini_ai_agent.yahoo_diagnostics --symbol 005930.KS
 ```
 
-Shell is not required: on Render, the normal server automatically starts a
-background diagnosis for `005930.KS` once per server process startup. Keep the
-existing Start Command. Search Render Logs for `yahoo_diagnostic`: start,
-environment, eight operation results, then complete. Web serving is not blocked;
-each probe has its own subprocess and a 45-second deadline. A restart, including
-waking a sleeping service, runs the diagnosis again. After collecting the logs,
-set `YAHOO_DIAGNOSTICS_ON_START=0` in Render Environment to disable it and avoid
-unnecessary Yahoo requests. Local startup defaults to disabled; set the variable
-to `1` to enable explicitly. No LLM requests or public diagnostic endpoint.
+Startup diagnosis is disabled by default on both local and Render servers to
+avoid extra Yahoo requests. Manual CLI diagnosis remains available. If Shell is
+unavailable and diagnosis is needed again, explicitly set
+`YAHOO_DIAGNOSTICS_ON_START=1` in Render Environment and redeploy. Keep the
+existing Start Command. This runs a background diagnosis for `005930.KS` once
+per process startup, including service wake-ups. Search Render Logs for
+`yahoo_diagnostic`: start, environment, eight operation results, then complete.
+Web serving is not blocked; each probe has its own subprocess and a 45-second
+deadline. After collecting the logs, set `YAHOO_DIAGNOSTICS_ON_START=0` and
+restart/redeploy to disable it. Explicit `1` overrides the disabled default.
+No LLM requests or public diagnostic endpoint.
 
 Without `--probe`, all eight checks run sequentially (up to about six minutes).
 Other probe names: history,

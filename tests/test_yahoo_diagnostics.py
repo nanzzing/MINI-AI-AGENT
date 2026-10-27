@@ -7,21 +7,22 @@ from mini_ai_agent import yahoo_diagnostics as d
 
 
 class YahooDiagnosticsTests(unittest.TestCase):
-    def test_startup_render_default_is_background_only(self):
-        with patch.dict(d.os.environ, {'RENDER': 'true'}, clear=True), patch.object(d, 'Thread') as thread:
+    def test_startup_explicit_opt_in_is_background_only(self):
+        with patch.dict(d.os.environ, {'RENDER': 'true', 'YAHOO_DIAGNOSTICS_ON_START': '1'}, clear=True), patch.object(d, 'Thread') as thread:
             result = d.start_startup_diagnostics()
         self.assertIs(result, thread.return_value)
         self.assertTrue(thread.call_args.kwargs['daemon'])
         thread.return_value.start.assert_called_once()
 
-    def test_startup_disabled_locally_or_explicitly(self):
-        for env in ({}, {'RENDER': 'true', 'YAHOO_DIAGNOSTICS_ON_START': '0'}):
+    def test_startup_disabled_by_default_on_both_hosts(self):
+        for env in ({}, {'RENDER': 'true'},
+                    {'RENDER': 'true', 'YAHOO_DIAGNOSTICS_ON_START': '0'}):
             with patch.dict(d.os.environ, env, clear=True), patch.object(d, 'Thread') as thread:
                 self.assertIsNone(d.start_startup_diagnostics())
                 thread.assert_not_called()
 
     def test_background_failure_is_safe(self):
-        with patch.dict(d.os.environ, {'RENDER': 'true'}, clear=True), patch.object(d, 'Thread') as thread:
+        with patch.dict(d.os.environ, {'RENDER': 'true', 'YAHOO_DIAGNOSTICS_ON_START': '1'}, clear=True), patch.object(d, 'Thread') as thread:
             d.start_startup_diagnostics()
         target = thread.call_args.kwargs['target']
         with patch.object(d, 'run_report', side_effect=RuntimeError('secret')), patch.object(d, 'emit') as emit:

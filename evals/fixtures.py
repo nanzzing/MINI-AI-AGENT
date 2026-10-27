@@ -2,6 +2,8 @@
 from contextlib import contextmanager, ExitStack
 from datetime import datetime, timezone
 from unittest.mock import patch
+from types import SimpleNamespace
+from mini_ai_agent import stocks
 
 from mini_ai_agent.market_data import policy
 
@@ -49,6 +51,9 @@ def fixed_data(mode="complete"):
     # 전체 종목 목록과 모든 외부 데이터 경계를 패치한다. OpenAI는 패치하지 않는다.
     catalog = {"stocks": STOCKS, "fetched_at": FIXED_NOW.isoformat()}
     with ExitStack() as stack:
+        stack.enter_context(patch.dict(stocks._DISCOVERED, {}, clear=True))
+        stack.enter_context(patch.dict(stocks._SEARCH_CACHE, {}, clear=True))
+        stack.enter_context(patch('mini_ai_agent.stocks.yf.Search', return_value=SimpleNamespace(quotes=[])))
         for target in ("mini_ai_agent.llm.load_catalog", "mini_ai_agent.stocks.load_catalog", "mini_ai_agent.market_data.load_catalog"):
             stack.enter_context(patch(target, return_value=catalog))
         stack.enter_context(patch("mini_ai_agent.llm.datetime", FrozenClock))

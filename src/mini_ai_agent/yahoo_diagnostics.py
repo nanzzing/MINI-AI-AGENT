@@ -132,9 +132,8 @@ def run_report(symbol='005930.KS', operation=None):
 
 
 def start_startup_diagnostics():
-    """Render에서는 프로세스 시작마다 1회 실행. 공개 진단 API는 만들지 않는다."""
-    enabled = os.environ.get('YAHOO_DIAGNOSTICS_ON_START',
-                             '1' if os.environ.get('RENDER') else '0')
+    """명시적으로 켰을 때만 시작 시 1회 실행. 평소에는 추가 조회를 하지 않는다."""
+    enabled = os.environ.get('YAHOO_DIAGNOSTICS_ON_START', '0')
     if enabled.strip().lower() not in ('1', 'true', 'yes'):
         return None
 

@@ -18,7 +18,12 @@ def number(value):
 
 
 def valuation_comparison(stock):
-    """공급자 지표를 그대로 구분하며 조정 차트 가격으로 PER를 재계산하지 않는다."""
+    """한국은 DART 기반 계산, 미국은 공급자 배수. 가격 조정 기준을 혼용하지 않는다."""
+    if stock['exchange'] in {'KOSPI', 'KOSDAQ', 'KONEX'}:
+        from mini_ai_agent.korean_valuation import calculate
+        return cached(('valuation', 'dart-calculated-ttm-v3', stock['exchange'], stock['code']),
+                      300, lambda: calculate(stock))
+
     def fetch():
         symbol = yahoo_symbol(stock)
         try:

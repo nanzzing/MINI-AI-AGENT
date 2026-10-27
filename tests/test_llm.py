@@ -31,6 +31,47 @@ def queries(short=False, long=True):
 
 
 class LLMTests(unittest.TestCase):
+    def test_new_stock_requires_search_in_this_session(self):
+        session = OpenAIConversation()
+        resources = {}
+        args = json.dumps({'code': 'NVDA', 'exchange': 'NASDAQ', 'horizon': '장기'})
+        result = session.execute_tool('set_research_context', args, session.state, resources)
+        self.assertIn('error', result)
+        self.assertIsNone(session.state.code)
+        self.finances.assert_not_called()
+        with patch('mini_ai_agent.llm.search_stocks', return_value={'stocks': []}):
+            session.execute_tool('search_stock', '{"query":"unknown"}', session.state, resources)
+        self.assertIn('error', session.execute_tool('set_research_context', args, session.state, resources))
+
+    def test_model_resolves_typo_through_search_round_trip(self):
+        # 오타 해석 자체는 모델의 책임이다. 서버는 해석된 검색어의 결과만 승인한다.
+        client = self.make_client([
+            [tool('search_stock', {'query': 'NVDA'}, 'search')],
+            [tool('set_research_context', {'code': 'NVDA', 'exchange': 'NASDAQ', 'horizon': '장기'}, 'context')],
+            queries(), [answer('엔비디아(NVDA) 기준으로 확인했습니다.')],
+        ], include_search=False)
+        session = OpenAIConversation(client)
+        session.respond('앤비디아 장기적으로 어때?')
+        self.assertEqual(session.state.code, 'NVDA')
+        self.assertEqual(session.tool_calls[0]['name'], 'search_stock')
+        outputs = [item for item in self.requests[1]['input'] if item.get('type') == 'function_call_output']
+        self.assertEqual(json.loads(outputs[0]['output'])['stocks'][0]['code'], 'NVDA')
+
+    def test_search_candidates_survive_clarification_and_reset(self):
+        client = self.make_client([
+            [tool('search_stock', {'query': 'NVDA'}, 'search')],
+            [answer('엔비디아를 말씀하신 건가요?')],
+            [tool('set_research_context', {'code': 'NVDA', 'exchange': 'NASDAQ', 'horizon': None}, 'context')],
+            [answer('어떤 투자 기간으로 볼까요?')],
+        ], include_search=False)
+        session = OpenAIConversation(client)
+        session.respond('앤비디아?')
+        session.respond('응 맞아')
+        self.assertEqual(session.state.code, 'NVDA')
+        self.assertNotIn('search_stock', [call['name'] for call in session.tool_calls])
+        session.respond('/reset')
+        self.assertEqual(session.saved_resources, {})
+
     def test_explanation_keeps_previous_answer_without_full_research(self):
         from mini_ai_agent.conversation import Horizon
         client = self.make_client([
@@ -140,8 +181,27 @@ class LLMTests(unittest.TestCase):
             mocker = patch("mini_ai_agent.llm." + name, return_value=result)
             setattr(self, name, mocker.start())
             self.addCleanup(mocker.stop)
-    def make_client(self, outputs, status=200):
+    def make_client(self, outputs, status=200, *, include_search=True):
         # SDK는 그대로 사용하고 HTTP 전송만 가로채 준비한 응답을 순서대로 반환한다.
+        # 재무/재사용 중심의 기존 시나리오는 새 종목 앞에 검색 요청을 추가한다.
+        # 식별 절차 자체를 검증하는 테스트는 include_search=False로 모든 왕복을 명시한다.
+        if include_search:
+            from mini_ai_agent.stocks import find_stocks
+            verified = set()
+            for output in outputs:
+                if not isinstance(output, list):
+                    continue
+                prepared = []
+                for call in output:
+                    if call.get('name') == 'search_stock':
+                        verified.update(row['code'] for row in find_stocks(json.loads(call['arguments'])['query']))
+                    if call.get('name') == 'set_research_context':
+                        code = json.loads(call['arguments'])['code']
+                        if code not in verified:
+                            prepared.append(tool('search_stock', {'query': code}, 'verify_' + call['id']))
+                            verified.add(code)
+                    prepared.append(call)
+                output[:] = prepared
         self.requests = []
 
         def handle(request):
@@ -255,9 +315,9 @@ class LLMTests(unittest.TestCase):
             self.assertEqual(conversation.research["financials"]["requested"],
                              {"annual_years": years, "quarters": quarters})
             self.assertNotIn("tool_choice", self.requests[-1])
-            self.assertEqual(len(conversation.tool_calls), 4 if horizon == "중기" else 5)
+            self.assertEqual(len(conversation.tool_calls), 4 if horizon == "중기" else 6 if horizon == '단기' else 5)
             outputs = [item for item in self.requests[-1]["input"] if item.get("type") == "function_call_output"]
-            self.assertIn("required_tools", json.loads(outputs[0]["output"]))
+            self.assertTrue(any('required_tools' in json.loads(output['output']) for output in outputs))
         self.assertEqual([call.args[1] for call in self.finances.call_args_list], ["단기", "중장기", "장기"])
 
     def test_missing_queries_are_returned_to_model(self):
@@ -291,6 +351,7 @@ class LLMTests(unittest.TestCase):
     def test_context_only_does_not_fetch_and_invalid_calls_do_not_count(self):
         conversation = OpenAIConversation()
         resources = {}
+        conversation.execute_tool('search_stock', '{"query":"AAPL"}', conversation.state, resources)
         result = conversation.execute_tool("set_research_context", json.dumps({
             "code": "AAPL", "exchange": "NASDAQ", "horizon": "장기"
         }), conversation.state, resources)
@@ -382,9 +443,9 @@ class LLMTests(unittest.TestCase):
             queries(), [answer("조회 후 분석")],
         ]))
         self.assertEqual(conversation.respond("삼성전자 장기적으로 어때"), "조회 후 분석")
-        self.assertEqual(self.requests[1]["tool_choice"]["name"], "set_research_context")
+        self.assertEqual(self.requests[1]["tool_choice"]["name"], "search_stock")
         self.assertNotIn("tool_choice", self.requests[2])
-        self.assertEqual(len(conversation.tool_calls), 5)
+        self.assertEqual(len(conversation.tool_calls), 6)
 
     def test_answer_and_multiple_sources_are_returned_in_one_response(self):
         # 사후 평가 모델 호출 없이 답변 생성 응답 하나에서 결론+두 근거를 함께 얻는다.

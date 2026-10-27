@@ -30,7 +30,7 @@ from dotenv import dotenv_values
 from openai import OpenAI, APIConnectionError, APIStatusError, APITimeoutError
 
 from mini_ai_agent.conversation import ConversationState, Horizon, RESEARCH_FOCUS, detect_horizon
-from mini_ai_agent.stocks import find_stocks, load_catalog
+from mini_ai_agent.stocks import load_catalog, known_stocks, search_stocks
 from mini_ai_agent.market_data import financials, financial_summary, stock_identity, price_history, news, earnings_events, policy
 from mini_ai_agent.technicals import analyze
 from mini_ai_agent.coverage import evidence_bank, declared_coverage, answer_schema, ANSWER_INSTRUCTIONS
@@ -74,13 +74,13 @@ TOOLS = [
           ("get_price_analysis", "현재 종목·관점의 가격 이력 요약과 파이썬이 계산한 기술적 지표를 조회합니다. RSI·MACD와 각각의 상승·하락 다이버전스 판정 및 비교 전환점을 포함합니다."),
           ("get_news", "현재 종목·관점에 맞는 최근 뉴스 제목과 출처를 조회합니다. 모든 관점에서 필수입니다."),
           ("get_events", "단기 관점의 향후 실적 발표 예상 일정을 조회합니다. 중기·장기에는 호출하지 마세요."),
-          ("get_valuation_comparison", "장기 전용 기업 PER·선행 PER·PBR·ROE·FCF 수익률·EV/EBITDA와 비교 자료 제공 여부를 조회합니다. 업종/과거 자료 미제공은 비교 불가로 설명하세요."),
+          ("get_valuation_comparison", "장기 전용 가치평가. 한국은 DART 최근 4분기 실적과 최근 종가로 기업 전체 TTM PER을 계산하며, PBR은 최신 분기 말 자본, ROE는 TTM 이익과 기간 시작·끝 평균 자본 기준입니다. 미국은 공급자 배수입니다. 선행/업종/과거 등 미제공 자료는 비교 불가로 설명하세요."),
       ]],
     {"type": "function", "name": "get_financials",
      "description": "현재 조사 종목의 재무제표를 투자 기간별 범위로 조회합니다. 실적·성장·부채·가치 분석 시 사용하세요.",
      "parameters": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True},
     {"type": "function", "name": "search_stock",
-     "description": "한국·미국 종목 목록에서 종목명·별칭·티커로 검색합니다. 주가나 재무 자료는 반환하지 않습니다.",
+     "description": "종목명·별칭·티커로 로컬 목록을 검색하고 없으면 외부에서 한국·미국 주식 후보를 조회합니다. 한글명 실패 시 영문명/정확한 티커로 재검색하세요. A/B·우선주를 구분하며 주가/재무는 반환하지 않습니다.",
      "parameters": {"type": "object", "properties": {"query": {"type": "string"}},
                     "required": ["query"], "additionalProperties": False}, "strict": True},
     {"type": "function", "name": "set_research_context",
@@ -276,15 +276,27 @@ class OpenAIConversation:
                 query = args.get("query")
                 if not isinstance(query, str) or not 1 <= len(query) <= 200:
                     raise ValueError
-                # 로컬 목록을 검색해 필요한 결과만 돌려주므로 전체 목록을 모델에 보낼 필요가 없다.
-                return {"stocks": find_stocks(query)[:20], "source": "KIS stock directory",
-                        "fetched_at": load_catalog()["fetched_at"]}
+                # 로컬 우선·외부 보완 검색. 모델에는 전체 목록이 아닌 후보만 보낸다.
+                result = search_stocks(query)
+                # 이 대화에서 실제 검색으로 반환된 후보만 새 조사 대상으로 허용한다.
+                # 다른 사용자의 검색 캐시에 존재한다는 이유만으로 검증을 생략하지 않는다.
+                candidates = resources.setdefault('_stock_candidates', [])
+                for stock in result.get('stocks', []):
+                    if stock not in candidates:
+                        candidates.append(stock)
+                resources['_stock_candidates'] = candidates[-40:]
+                return result
             if name == "set_research_context":
                 # 모델이 만든 코드·거래소를 그대로 믿지 않고 실제 목록과 대조한다.
-                matches = [row for row in load_catalog()["stocks"]
+                matches = [row for row in known_stocks()
                            if row["code"] == args.get("code") and row["exchange"] == args.get("exchange")]
                 if len(matches) != 1:
                     return {"error": "해당 종목을 확인할 수 없습니다. search_stock으로 다시 검색하세요."}
+                identity = (args.get('code'), args.get('exchange'))
+                verified = any((row['code'], row['exchange']) == identity
+                               for row in resources.get('_stock_candidates', []))
+                if identity != (state.code, state.exchange) and not verified:
+                    return {'error': '새 종목은 먼저 search_stock으로 확인해야 합니다. 해석한 정식 회사명 또는 티커를 검색하고 반환된 후보로 다시 설정하세요.'}
                 horizon = args.get("horizon")
                 if horizon == "중기":
                     horizon = "중장기"
@@ -298,7 +310,9 @@ class OpenAIConversation:
                 state.horizon = selected
                 state.stage = "ready_for_research" if selected else "awaiting_horizon"
                 if not same_stock:
+                    candidates = resources.get('_stock_candidates', [])
                     resources.clear()
+                    resources['_stock_candidates'] = candidates
                 elif not same_context:
                     resources["attempted_tools"] = []
                 self.prune_resources(state, resources)
@@ -397,21 +411,18 @@ class OpenAIConversation:
             # 사용 근거는 별도 대화 기록에 넣어 현재 유효한 자료와 구분한다.
             history = [{"role": "user", "content": turn["question"]} for turn in self.dialogue]
             history.append({"role": "user", "content": message})
-            # 명확한 입력은 로컬 목록과 대조해 최종 답변의 문맥 누락을 검사한다.
-            # 복수 후보와 복수 관점은 여기서 임의로 확정하지 않는다.
-            matches = find_stocks(message, allow_indicator_tickers=False)
-            # 서버의 로컬 사전 확인이다. 모델의 search_stock 요청이 아니므로 로그 횟수에
-            # 표시되지 않는다. 일반 대화나 모호한 입력 전체를 분류하는 의도 인식기는 아니다.
-            # 'RSI 하락 다이버전스'를 NYSE의 RSI 종목으로 오인해 종목 변경을 강제하지 않는다.
+            # 종목 해석은 모델에게 맡긴다. 로컬 별칭/문자열 검색 결과를 목표 종목으로
+            # 강제하지 않는다. 새 종목은 실제 search_stock 반환 후보여야 설정할 수 있다.
+            # 순수 관점 전환만 기존 종목을 유지하며 첫 호출의 자료 범위를 좁힌다.
             requested_horizon = detect_horizon(message)
             expected_context = None
-            if len(matches) == 1:
-                stock = matches[0]
-                selected = requested_horizon or state.horizon
-                expected_context = [stock["code"], stock["exchange"], selected.value if selected else None]
-            elif not matches and state.code and requested_horizon:
+            if state.code and requested_horizon and message.strip().strip(' ?!.') in {
+                '단기', '중기', '중장기', '장기', '단기로', '중기로', '중장기로', '장기로',
+                '그럼 단기는', '그럼 중기는', '그럼 장기는',
+            }:
                 expected_context = [state.code, state.exchange, requested_horizon.value]
             require_context = False
+            require_search = False
             repair_missing = False
             # 역할 지시문에 공통 조사 기준과 이번 대화의 현재 상태를 덧붙인다.
             instructions = PROMPT.read_text(encoding="utf-8")
@@ -442,7 +453,9 @@ class OpenAIConversation:
                     context_key = [state.code, state.exchange, state.horizon.value if state.horizon else None]
                     context_missing = expected_context is not None and context_key != expected_context
                     choice = {}
-                    if context_missing:
+                    if require_search:
+                        choice = {"tool_choice": {"type": "function", "name": "search_stock"}}
+                    elif context_missing:
                         choice = ({"tool_choice": {"type": "function", "name": "set_research_context"}}
                                   if require_context else {})
                     elif repair_missing:
@@ -472,6 +485,7 @@ class OpenAIConversation:
                     # 어떤 원본을 가리키는지 서버가 확인할 수 있게 이 목록을 모델에도 제공한다.
                     response_instructions = instructions + "\n" + ANSWER_INSTRUCTIONS
                     response_instructions += "\n현재 조사 상태:\n" + json.dumps(asdict(state), ensure_ascii=False)
+                    response_instructions += "\n이 대화에서 검색으로 확인한 종목 후보(사용자 선택과 동일하지 않음):\n" + json.dumps(resources.get('_stock_candidates', []), ensure_ascii=False)
                     response_instructions += "\n과거 대화 기록(당시 답변과 근거이며 최신 자료가 아님; 과거 ID 재사용 금지):\n" + json.dumps(self.dialogue, ensure_ascii=False)
                     response_instructions += "\n이번 응답 모드: " + resources.get("_response_mode", "research")
                     response_instructions += "\n이번 요청의 진행 조건:\n" + json.dumps({
@@ -505,6 +519,8 @@ class OpenAIConversation:
                     # 모델의 도구 요청도 이력에 남겨 후속 실행 결과와 연결한다.
                     history.extend(item.model_dump(exclude_none=True) for item in response.output)
                     calls = [item for item in response.output if item.type == "function_call"]
+                    if any(call.name == 'search_stock' for call in calls):
+                        require_search = False
                     if choice and not calls:
                         raise ChatError("필수 도구 요청을 지정했지만 모델이 도구 호출을 반환하지 않았어요: "
                                         + choice["tool_choice"]["name"]
@@ -514,6 +530,14 @@ class OpenAIConversation:
                     # function_call이 있으면 아직 최종 답변이 아니다. Python이 실행한 결과를
                     # call_id로 대응시켜 다음 모델 호출의 입력에 넣어야 한 사이클이 완성된다.
                     if not calls:
+                        if (not state.code and requested_horizon and resources.get('_response_mode') == 'research'
+                                and not any(row['name'] == 'search_stock' for row in trace)):
+                            require_search = True
+                            record_step({'round': round_number, 'event': '서버 보완 요청',
+                                         'detail': '종목 확인 전 분석 초안을 보류하고 검색을 요청했습니다.'})
+                            history.append({'role': 'developer', 'content':
+                                            '아직 검색으로 확인한 조사 종목이 없습니다. 사용자 표현을 해석하여 search_stock으로 확인하세요. 종목이 불명확하면 확인 질문을 하세요.'})
+                            continue
                         if context_missing:
                             # 명확한 종목/관점을 무시한 초안은 화면에 내보내지 않는다.
                             # 다음 호출에만 set_research_context를 강제해 정상 검색 흐름은 허용한다.

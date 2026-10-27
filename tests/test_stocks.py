@@ -1,12 +1,71 @@
 """저장된 종목 목록의 검색·식별과 원본 데이터 변환을 검증한다."""
 
 import unittest
+from unittest.mock import patch
 
 from mini_ai_agent.conversation import InvestmentConversation
 from mini_ai_agent.stocks import find_stocks, load_catalog, parse_master
+from mini_ai_agent import stocks
 
 
 class StockTests(unittest.TestCase):
+    def setUp(self):
+        stocks._DISCOVERED.clear()
+        stocks._SEARCH_CACHE.clear()
+
+    def tearDown(self):
+        stocks._DISCOVERED.clear()
+        stocks._SEARCH_CACHE.clear()
+
+    def test_berkshire_spacing_and_class_ticker_variants(self):
+        for query in ('버크셔 해서웨이 B', '버크셔해서웨이B 장기', 'BRK.B', 'BRK-B', 'BRK/B'):
+            with self.subTest(query=query), patch('mini_ai_agent.stocks.yf.Search') as remote:
+                self.assertEqual(stocks.search_stocks(query)['stocks'][0]['code'], 'BRK/B')
+                remote.assert_not_called()
+        self.assertEqual({row['code'] for row in stocks.search_stocks('버크셔 해서웨이')['stocks']}, {'BRK/A', 'BRK/B'})
+
+    def test_external_search_registration_allows_research_context(self):
+        from mini_ai_agent.market_data import stock_identity
+        from mini_ai_agent.llm import OpenAIConversation
+        from mini_ai_agent.conversation import ConversationState
+        import json
+        with patch('mini_ai_agent.stocks.yf.Search') as remote:
+            remote.return_value.quotes = [dict(symbol='ZZTEST-B', exchange='NYQ', quoteType='EQUITY', longname='Test Class B')]
+            result = stocks.search_stocks('unknown company name')
+            found = result['stocks'][0]
+            self.assertEqual(found['code'], 'ZZTEST/B')
+            self.assertEqual(stock_identity(found['code'], 'NYSE'), found)
+            state = ConversationState()
+            session, resources = OpenAIConversation(), {}
+            session.execute_tool('search_stock', '{"query":"ZZTEST/B"}', state, resources)
+            answer = session.execute_tool('set_research_context', json.dumps({
+                'code': found['code'], 'exchange': 'NYSE', 'horizon': None}), state, resources)
+            self.assertNotIn('error', answer)
+            self.assertEqual(state.code, 'ZZTEST/B')
+            stocks.search_stocks('unknown company name')
+            self.assertEqual(remote.call_count, 1)
+
+    def test_external_filters_and_failure_are_not_not_found(self):
+        with patch('mini_ai_agent.stocks.yf.Search') as remote:
+            remote.return_value.quotes = [
+                dict(symbol='ABC', exchange='NYQ', quoteType='ETF', longname='Fund'),
+                dict(symbol='ABC.L', exchange='LSE', quoteType='EQUITY', longname='UK'),
+                dict(symbol='bad/url', exchange='NYQ', quoteType='EQUITY', longname='Bad'),
+                dict(symbol='123450.KQ', exchange='KOE', quoteType='EQUITY', longname='New Korea')]
+            result = stocks.search_stocks('zz-no-local-match-1')
+            self.assertEqual(result['stocks'], [{'code':'123450','exchange':'KOSDAQ','name':'New Korea'}])
+            remote.side_effect = RuntimeError('private error')
+            failed = stocks.search_stocks('zz-no-local-match-2')
+            self.assertEqual(failed['status'], 'unavailable')
+            self.assertNotIn('private', str(failed))
+            remote.side_effect = None
+            remote.return_value.quotes = []
+            self.assertEqual(stocks.search_stocks('zz-no-local-match-3')['status'], 'empty')
+
+    def test_ordinary_chat_detection_does_not_query_network(self):
+        with patch('mini_ai_agent.stocks.yf.Search') as remote:
+            self.assertEqual(find_stocks('이전 설명이 이해되지 않는데 다시 알려줘'), [])
+            remote.assert_not_called()
     # 저장된 카탈로그와 파서만 사용한다. 테스트 중 KIS 전체 목록을 다시 내려받지 않는다.
     def test_korean_codes_keep_leading_zero(self):
         # 종목코드는 숫자로 변환하면 앞의 0이 사라지므로 문자열이어야 한다.

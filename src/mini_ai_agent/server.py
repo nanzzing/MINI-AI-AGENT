@@ -16,7 +16,7 @@ from urllib.parse import urlparse, parse_qs
 
 from mini_ai_agent.conversation import RESEARCH_FOCUS
 from mini_ai_agent.llm import OpenAIConversation, ChatError, configuration_status
-from mini_ai_agent.stocks import find_stocks
+from mini_ai_agent.stocks import find_stocks, search_stocks
 from mini_ai_agent.discovery import discover
 from mini_ai_agent.market_data import stock_identity, price_history, financials, policy
 from mini_ai_agent.chatgpt import ChatGPTConnection, ChatGPTError
@@ -202,9 +202,11 @@ class Handler(BaseHTTPRequestHandler):
                 if horizon not in {None, "단기", "중기", "중장기", "장기"}:
                     raise ValueError("투자 기간을 확인해 주세요.")
                 if "query" in params:
-                    matches = find_stocks(params["query"][0][:200])
+                    search = search_stocks(params["query"][0][:200])
+                    matches = search['stocks']
                     if len(matches) != 1:
-                        self.send_json(200, {"status": "ambiguous" if matches else "not_found", "matches": matches[:10]})
+                        self.send_json(200, {"status": "ambiguous" if matches else search['status'],
+                                             "message": search.get('message'), "matches": matches[:10]})
                         return
                     stock = matches[0]
                 else:

@@ -39,6 +39,7 @@ class EvaluationTests(unittest.TestCase):
         with fixed_data():
             agent = OpenAIConversation()
             resources = {}
+            agent.execute_tool('search_stock', '{"query":"AAPL"}', agent.state, resources)
             agent.execute_tool("set_research_context", json.dumps({"code": "AAPL", "exchange": "NASDAQ", "horizon": "장기"}), agent.state, resources)
             result = agent.execute_tool("get_financials", "{}", agent.state, resources)
             self.assertEqual(result["status"], "ok")

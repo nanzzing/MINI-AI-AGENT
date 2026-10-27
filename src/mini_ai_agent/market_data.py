@@ -12,7 +12,8 @@ import xml.etree.ElementTree as ET
 
 import yfinance as yf
 
-from mini_ai_agent.stocks import load_catalog
+from mini_ai_agent import dart
+from mini_ai_agent.stocks import load_catalog, known_stocks
 from mini_ai_agent.technicals import analyze
 
 # 보유 기간이 아니라 분석에 사용할 과거 자료의 범위다.
@@ -34,7 +35,7 @@ def policy(horizon):
 
 def stock_identity(code, exchange):
     """코드와 거래소를 묶어 실제 목록의 한 종목으로 확정한다. 이름을 추정하지 않는다."""
-    matches = [r for r in load_catalog()["stocks"] if r["code"] == code and r["exchange"] == exchange]
+    matches = [r for r in known_stocks() if r["code"] == code and r["exchange"] == exchange]
     if len(matches) != 1:
         raise ValueError("종목 코드와 거래소를 확인해 주세요.")
     return matches[0]
@@ -190,6 +191,11 @@ def financials(stock, horizon):
     """
     rules = policy(horizon)
 
+    if stock['exchange'] in {'KOSPI', 'KOSDAQ', 'KONEX'}:
+        # DART 실패를 Yahoo 자료로 조용히 대체하지 않는다. 출처/기간이 섞이지 않게 한다.
+        return cached(('financials', 'OpenDART', stock['exchange'], stock['code'], horizon),
+                      3600, lambda: dart.financials(stock, rules))
+
     def fetch():
         try:
             ticker = yf.Ticker(yahoo_symbol(stock))
@@ -238,7 +244,7 @@ def research_bundle(stock, horizon):
 
 def financial_summary(result):
     """전체 재무제표는 보관하고 모델에는 주요 항목만 보내 문맥 크기를 제한한다."""
-    fields = {"Total Revenue", "Operating Income", "Net Income", "Diluted EPS", "Total Assets", "Total Debt",
+    fields = {"Total Revenue", "Operating Income", "Net Income", "Net Income Attributable To Parent", "Basic EPS", "Diluted EPS", "Total Assets", "Total Debt", "Total Liabilities", "Total Equity",
               "Stockholders Equity", "Cash And Cash Equivalents", "Operating Cash Flow", "Free Cash Flow",
               "Capital Expenditure", "Ordinary Shares Number"}
     summary = deepcopy(result)

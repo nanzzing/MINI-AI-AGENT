@@ -101,7 +101,7 @@ FINANCIAL_FIELDS = {
     '영업이익률 및 수익성 추이': {'Total Revenue', 'Operating Income', 'Net Income'},
     '영업현금흐름과 잉여현금흐름(FCF)': {'Operating Cash Flow', 'Free Cash Flow', 'Capital Expenditure'},
     'ROE·ROIC 및 자본 효율성': {'Net Income', 'Stockholders Equity', 'Total Debt', 'Cash And Cash Equivalents'},
-    '부채 부담 및 이자 지급 능력': {'Total Debt', 'Stockholders Equity', 'Cash And Cash Equivalents', 'Operating Cash Flow'},
+    '부채 부담 및 이자 지급 능력': {'Total Debt', 'Total Liabilities', 'Stockholders Equity', 'Total Equity', 'Cash And Cash Equivalents', 'Operating Cash Flow'},
     '경영진의 역량과 자본 배분': {'Capital Expenditure', 'Free Cash Flow'},
     '배당·자사주 매입·투자 지출의 적절성': {'Capital Expenditure', 'Operating Cash Flow', 'Free Cash Flow'},
     'FCF 수익률과 현금 창출력 대비 가격 수준': {'Operating Cash Flow', 'Free Cash Flow', 'Capital Expenditure'},
@@ -157,6 +157,7 @@ def evidence_bank(criteria, research):
                             if values:
                                 add(f'financials.statements.{frequency}.{statement}.{row_index}',
                                     {'period_end': row.get('period_end'), 'currency': root.get('currency'),
+                                     **{key: row[key] for key in ('scope', 'source_urls', 'value_basis') if key in row},
                                      'values': values}, root)
             else:
                 value = root

@@ -1,0 +1,6 @@
+{
+  "KOSPI:005930": {
+    "source": "https://www.samsung.com/global/ir/stock-information/listing-Info/",
+    "classes": {"보통주": "005930", "우선주": "005935"}
+  }
+}

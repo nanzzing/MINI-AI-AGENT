@@ -57,13 +57,23 @@ class MarketTests(unittest.TestCase):
         frame = pd.DataFrame({pd.Timestamp("2025-12-31"): [123]}, index=["Total Revenue"])
         for name in ("get_income_stmt", "get_balance_sheet", "get_cashflow"):
             getattr(instance, name).return_value = frame
-        result = market.financials(self.stock, "단기")
+        result = market.financials({"name": "Apple", "code": "AAPL", "exchange": "NASDAQ"}, "단기")
         self.assertEqual(result["status"], "partial")
         self.assertNotIn("yearly", result["statements"])
         instance.get_income_stmt.assert_called_once_with(freq="quarterly", pretty=True)
         summary = market.financial_summary(result)
         self.assertEqual(summary["statements"]["quarterly"]["income"][0]["values"]["Total Revenue"], 123)
         self.assertEqual(len(result["missing"]), 3)
+
+    def test_korean_financials_use_dart_and_never_yahoo(self):
+        with patch.object(market.dart, 'financials', return_value={'source': 'OpenDART', 'status': 'unavailable'}) as fetch, patch.object(market.yf, 'Ticker') as ticker:
+            for exchange in ('KOSPI', 'KOSDAQ', 'KONEX'):
+                stock = {**self.stock, 'exchange': exchange}
+                for horizon in ('단기', '중기', '장기'):
+                    result = market.financials(stock, horizon)
+                    self.assertEqual(result['source'], 'OpenDART')
+                    fetch.assert_called_with(stock, market.policy(horizon))
+            ticker.assert_not_called()
 
     @patch.object(market, "financials")
     @patch.object(market, "earnings_events", return_value={})

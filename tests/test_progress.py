@@ -23,7 +23,7 @@ class ProgressTransportTests(unittest.TestCase):
                 self.tool_calls, self.agent_steps, self.coverage = [], [], []
                 self.research = {}
 
-            def respond(self, message, on_progress=None):
+            def respond(self, message, on_progress=None, *, selection='자동'):
                 if on_progress:
                     on_progress({'event': '모델 호출', 'round': 1, 'elapsed_ms': 0})
                     if not owner.release.wait(5):

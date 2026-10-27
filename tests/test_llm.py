@@ -31,6 +31,55 @@ def queries(short=False, long=True):
 
 
 class LLMTests(unittest.TestCase):
+    def test_industry_question_ignores_previous_short_checklist(self):
+        from mini_ai_agent.conversation import Horizon
+        client = self.make_client([
+            [tool('set_response_mode', {'mode': 'industry'}, 'mode')],
+            [tool('search_topic_news', {'query': '반도체 수요', 'days': 30}, 'news')],
+            [answer('수요 전망은 추가 확인이 필요합니다.', [{'text': '수요 전망은 추가 확인이 필요합니다.', 'source_ids': ['q0']}])],
+        ], include_search=False)
+        session = OpenAIConversation(client)
+        session.state.code, session.state.exchange, session.state.horizon = '005930', 'KOSPI', Horizon.SHORT
+        with patch('mini_ai_agent.llm.topic_news', return_value={'status': 'ok', 'source': 'RSS', 'items': [{'title': '수요 전망'}]}) as fetch:
+            session.respond('반도체 수요는 계속 갈까?', selection='자동')
+        fetch.assert_called_once_with('반도체 수요', 30)
+        self.finances.assert_not_called()
+        self.assertEqual(session.research['response_mode'], 'industry')
+        self.assertEqual(session.coverage[0]['status'], 'declared')
+        self.assertEqual(session.coverage[0]['criterion'], '반도체 수요')
+
+    def test_comparison_keeps_separate_verified_company_data(self):
+        session = OpenAIConversation()
+        resources = {}
+        args = {'code': 'NVDA', 'exchange': 'NASDAQ', 'horizon': '중기', 'kind': 'financials'}
+        self.assertIn('error', session.execute_tool('get_company_data', json.dumps(args), session.state, resources))
+        for code in ['NVDA', 'AAPL']:
+            session.execute_tool('search_stock', json.dumps({'query': code}), session.state, resources)
+            args['code'] = code
+            session.execute_tool('get_company_data', json.dumps(args), session.state, resources)
+        self.assertIsNone(session.state.code)
+        self.assertEqual(len(resources['question_sources']), 2)
+        self.assertEqual(self.finances.call_count, 2)
+        result = session.execute_tool('get_company_data', json.dumps(args), session.state, resources)
+        self.assertTrue(result['reused'])
+        self.assertEqual(self.finances.call_count, 2)
+        args['horizon'] = '장기'
+        session.execute_tool('get_company_data', json.dumps(args), session.state, resources)
+        self.assertEqual(self.finances.call_count, 3)
+        for entry in resources['question_sources'].values():
+            entry['timestamp'] = 0
+        self.assertFalse(session.scoped_resources(session.state, resources)['question_sources'])
+
+    def test_general_tools_reject_invalid_scope(self):
+        session = OpenAIConversation()
+        resources = {}
+        for args in [{'query': '', 'days': 30}, {'query': '반도체', 'days': 365}]:
+            self.assertIn('error', session.execute_tool('search_topic_news', json.dumps(args), session.state, resources))
+        session.execute_tool('search_stock', '{"query":"NVDA"}', session.state, resources)
+        args = {'code': 'NVDA', 'exchange': 'NASDAQ', 'horizon': '단기', 'kind': 'valuation'}
+        self.assertIn('error', session.execute_tool('get_company_data', json.dumps(args), session.state, resources))
+        self.valuation.assert_not_called()
+
     def test_new_stock_requires_search_in_this_session(self):
         session = OpenAIConversation()
         resources = {}
@@ -257,13 +306,14 @@ class LLMTests(unittest.TestCase):
         from mini_ai_agent.conversation import Horizon
         conversation = OpenAIConversation()
         names = lambda expected=None: {item["name"] for item in conversation.callable_tools(conversation.state, expected)}
-        self.assertEqual(names(), {"search_stock", "set_research_context", "set_response_mode"})
+        base = {"search_stock", "set_research_context", "set_response_mode", "search_topic_news", "get_company_data"}
+        self.assertEqual(names(), base)
         conversation.state.code, conversation.state.exchange = "005930", "KOSPI"
         conversation.state.horizon = Horizon.MEDIUM
         self.assertIn("get_financials", names())
         self.assertNotIn("get_events", names())
-        self.assertEqual(names(["005930", "KOSPI", "단기"]), {"search_stock", "set_research_context", "set_response_mode"})
-        self.assertEqual(names(["AAPL", "NASDAQ", "중장기"]), {"search_stock", "set_research_context", "set_response_mode"})
+        self.assertEqual(names(["005930", "KOSPI", "단기"]), base)
+        self.assertEqual(names(["AAPL", "NASDAQ", "중장기"]), base)
         conversation.state.horizon = Horizon.SHORT
         self.assertIn("get_events", names(["005930", "KOSPI", "단기"]))
 
@@ -275,7 +325,7 @@ class LLMTests(unittest.TestCase):
         ]))
         conversation.respond("삼전 어때?")
         self.bundle.assert_not_called()
-        self.assertTrue(all(not any(tool["name"].startswith("get_") for tool in request["tools"])
+        self.assertTrue(all(not any(tool["name"] == "get_news" for tool in request["tools"])
                             for request in self.requests))
         self.assertIn("error", conversation.tool_calls[-1]["result"])
 

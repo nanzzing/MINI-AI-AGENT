@@ -211,6 +211,7 @@
             <!-- 관점 버튼/입력 폼은 app.js의 send()로 들어간다. 기본 form 페이지 이동은 막는다. -->
             <div class="composer-area">
               <div class="horizon-picker" role="group" aria-label="투자 관점">
+                <button data-horizon="자동" aria-pressed="true">자동</button>
                 <button data-horizon="단기" aria-pressed="false">단기</button
                 ><button data-horizon="중기" aria-pressed="false">중기</button
                 ><button data-horizon="장기" aria-pressed="false">장기</button>
@@ -326,7 +327,7 @@
             <div class="criteria-section">
               <!-- Python의 RESEARCH_FOCUS로 목록을 만들고, 모델이 반환한 source ID 연결을 표시한다. -->
               <div class="section-title">
-                <span>조사 체크리스트</span>
+                <span id="criteria-title">조사 체크리스트</span>
                 <div class="criteria-heading-actions">
                   <span id="criteria-count">—</span>
                   <details id="criteria-help" class="criteria-help">
@@ -349,7 +350,7 @@
               </div>
               <ul id="criteria">
                 <li class="empty-criteria">
-                  투자 관점을 선택하면<br />조사 항목이 표시됩니다.
+                  아직 표시할 조사 항목이나 조회 근거가 없습니다.
                 </li>
               </ul>
             </div>

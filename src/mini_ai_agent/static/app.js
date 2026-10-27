@@ -7,9 +7,11 @@
 const $ = (selector) => document.querySelector(selector);
 let busy = false;
 let selectedHorizon = null;
+let analysisSelection = "자동";
 let researchFocus = {};
 let currentCoverage = [];
-// busy는 중복 전송 방지, selectedHorizon은 화면의 선택값이다.
+// selectedHorizon은 마지막 분석의 기간, analysisSelection은 사용자가 선택한 입력 모드다.
+// 자동에서 장기 질문을 해도 입력 모드를 장기로 고정하지 않는다.
 // researchFocus는 /api/status로 받은 Python 기준표, currentCoverage는 최신 답변의 근거 선언이다.
 // 새로고침하면 이 변수들은 초기화되지만 서버 쿠키/대화까지 초기화되지는 않는다.
 const icons = () => window.lucide?.createIcons();
@@ -273,14 +275,14 @@ function renderCriteria(horizon, focus, coverage = []) {
     [];
   $("#sidebar-horizon").textContent = selectedHorizon
     ? `${selectedHorizon} 관점`
-    : "투자 관점 미정";
-  $("#context-horizon").textContent = selectedHorizon || "관점 미정";
+    : "자동";
+  $("#context-horizon").textContent = selectedHorizon || "자동";
   document
     .querySelectorAll("[data-horizon]")
     .forEach((button) =>
       button.setAttribute(
         "aria-pressed",
-        String(button.dataset.horizon === selectedHorizon),
+        String(button.dataset.horizon === analysisSelection),
       ),
     );
   $("#criteria").replaceChildren();
@@ -383,18 +385,19 @@ function renderCriteria(horizon, focus, coverage = []) {
   if (!items.length) {
     const row = document.createElement("li");
     row.className = "empty-criteria";
-    row.textContent = "투자 관점을 선택하면 조사 항목이 표시됩니다.";
+    row.textContent = "아직 표시할 조사 항목이나 조회 근거가 없습니다.";
     $("#criteria").append(row);
   }
   const supported = coverage.filter(
     (entry) => entry.status === "declared" && items.includes(entry.criterion),
   ).length;
   $("#criteria-count").textContent = items.length
-    ? `${selectedHorizon} · ${coverage.length ? `${supported}/${items.length} 사용 명시` : `${items.length}개 항목`}`
+    ? `${selectedHorizon || "자동"} · ${coverage.length ? `${supported}/${items.length} 사용 명시` : `${items.length}개 항목`}`
     : "—";
 }
 
 function renderContext(data) {
+  $("#criteria-title").textContent = data.research?.response_mode && data.research.response_mode !== "research" ? "이번 답변의 조회 근거" : "조사 체크리스트";
   // 서버에서 확정한 종목·관점을 화면에 반영한다. 시장 화면에 넘기는 research는
   // 이미 조회한 결과라서 뉴스/재무를 표시하기 위해 다시 모델을 호출하지 않는다.
   $("#sidebar-company").textContent = data.company || "선택한 종목 없음";
@@ -403,8 +406,8 @@ function renderContext(data) {
     ? `${data.code} · ${data.exchange}`
     : "종목 미선택";
   renderCriteria(
-    data.horizon || selectedHorizon,
-    data.horizon ? data.focus : undefined,
+    data.horizon || null,
+    data.focus || [],
     data.coverage || [],
   );
   marketView.context(data);
@@ -434,7 +437,7 @@ async function send(message, reset = false) {
       message.replaceAll("중장기", "중기").match(/단기|중기|장기/g) || [],
     ),
   ];
-  if (reset) renderCriteria(null, []);
+  if (reset) { analysisSelection = "자동"; renderCriteria(null, []); }
   else if (horizons.length === 1) {
     await statusReady;
     renderCriteria(horizons[0]);
@@ -450,11 +453,11 @@ async function send(message, reset = false) {
         ...(selectedHorizon ? { horizon: selectedHorizon } : {}),
       });
     const response = await fetch("/api/chat", {
-      // 서버가 요구하는 JSON 입력은 message 하나다. 이전 대화 전체를 브라우저가 보내지
+      // message와 입력 모드만 전송한다. 이전 대화 전체를 브라우저가 보내지
       // 않아도 Python 세션이 history를 가지고 있어서 후속 질문을 이어갈 수 있다.
       method: "POST",
       headers: { "Content-Type": "application/json", "Accept": "application/x-ndjson", ...window.chatgptAuth?.headers() },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ message, selection: analysisSelection }),
     });
     const data = await readChatResponse(response, step => pending.progress(step));
     const elapsedSeconds = pending.finish();
@@ -494,8 +497,8 @@ $("#chat-form").addEventListener("submit", (event) => {
   // 선택한 관점이 있고 사용자가 새 관점을 쓰지 않았으면 입력에 관점을 덧붙인다.
   event.preventDefault();
   let message = $("#message").value.trim();
-  if (message && selectedHorizon && !/(단기|중기|중장기|장기)/.test(message))
-    message += ` (${selectedHorizon} 관점)`;
+  if (message && analysisSelection !== "자동" && !/(단기|중기|중장기|장기)/.test(message))
+    message += ` (${analysisSelection} 관점)`;
   send(message);
 });
 $("#message").addEventListener("keydown", (event) => {
@@ -513,7 +516,10 @@ document
 document
   .querySelectorAll("[data-horizon]")
   .forEach((button) =>
-    button.addEventListener("click", () => send(button.dataset.horizon)),
+    button.addEventListener("click", () => {
+      analysisSelection = button.dataset.horizon;
+      renderCriteria(analysisSelection === "자동" ? null : analysisSelection, analysisSelection === "자동" ? [] : undefined);
+    }),
   );
 $("#new-chat").addEventListener("click", () => send("/reset", true));
 

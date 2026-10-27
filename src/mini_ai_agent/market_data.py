@@ -114,13 +114,18 @@ def price_history(stock, horizon=None, *, full_history=False):
     return cached(("prices", stock["exchange"], stock["code"], period), 300, fetch)
 
 
-def news(stock, horizon):
+def topic_news(query, days=30):
+    """종목을 확정하지 않고 업황·수요 등의 주제로 동일한 RSS 검증 경로를 사용한다."""
+    return news(None, None, query=query, days=days)
+
+
+def news(stock, horizon, *, query=None, days=None):
     """기간에 맞는 RSS를 읽어 최신 10개 제목만 전달한다. 뉴스 본문 수집 기능은 없다."""
-    days = policy(horizon)["news_days"]
+    days = days if days is not None else policy(horizon)["news_days"]
     # 뉴스는 모든 투자 관점에서 시도한다. 본문이 아닌 제목·출처·게시 시각·링크만 수집한다.
     try:
-        korean = stock["exchange"] in {"KOSPI", "KOSDAQ", "KONEX"}
-        query = f'"{stock["name"]}" 주식 when:{days}d' if korean else f'"{stock["code"]}" stock when:{days}d'
+        korean = stock is None or stock["exchange"] in {"KOSPI", "KOSDAQ", "KONEX"}
+        query = (query + f' when:{days}d') if query is not None else (f'"{stock["name"]}" 주식 when:{days}d' if korean else f'"{stock["code"]}" stock when:{days}d')
         url = "https://news.google.com/rss/search?" + urlencode({"q": query, "hl": "ko" if korean else "en-US",
                                                                   "gl": "KR" if korean else "US", "ceid": "KR:ko" if korean else "US:en"})
         with urlopen(Request(url, headers={"User-Agent": "MiniAIResearch/0.1"}), timeout=15) as response:

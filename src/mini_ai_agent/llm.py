@@ -36,6 +36,7 @@ from mini_ai_agent.technicals import analyze
 from mini_ai_agent.coverage import evidence_bank, declared_coverage, answer_schema, ANSWER_INSTRUCTIONS
 from mini_ai_agent.chatgpt import ChatGPTError
 from mini_ai_agent.valuation import valuation_comparison
+from mini_ai_agent.market_data import topic_news
 
 ROOT = Path(__file__).resolve().parents[2]
 # 설치 위치가 src/mini_ai_agent일 때 프로젝트 루트의 .env를 읽는다.
@@ -64,9 +65,19 @@ def configuration_status() -> dict:
 # 모델에게 보내는 도구 설명서다. 함수 구현이나 전체 종목 목록은 여기에 포함하지 않는다.
 # strict와 JSON Schema로 입력 형태를 지정하고, 실행 시에도 별도로 검증한다.
 TOOLS = [
+    {"type": "function", "name": "search_topic_news",
+     "description": "업황·수요·산업 촉매의 최근 뉴스 제목 검색. 종목과 투자 기간 설정 불필요. 본문/가이던스 원문은 제공하지 않습니다.",
+     "parameters": {"type": "object", "properties": {"query": {"type": "string"}, "days": {"type": "integer", "enum": [7, 30, 90]}}, "required": ["query", "days"], "additionalProperties": False}, "strict": True},
+    {"type": "function", "name": "get_company_data",
+     "description": "검색으로 검증한 기업의 필요한 자료만 조회. 현재 조사 종목을 변경하지 않아 여러 기업 비교 가능. horizon은 자료 범위이며 사용자의 투자 기간으로 저장하지 않음. valuation은 장기 범위만 허용.",
+     "parameters": {"type": "object", "properties": {
+         "code": {"type": "string"}, "exchange": {"type": "string"},
+         "horizon": {"type": "string", "enum": ["단기", "중기", "장기"]},
+         "kind": {"type": "string", "enum": ["financials", "news", "technicals", "valuation"]}},
+         "required": ["code", "exchange", "horizon", "kind"], "additionalProperties": False}, "strict": True},
     {"type": "function", "name": "set_response_mode",
-     "description": "이번 질문의 응답 목적을 선택합니다. research=전체 분석/관점 전환, explain=직전 답변 설명, concept=일반 개념, focused=특정 항목 질문. 매 턴 기본값은 research입니다.",
-     "parameters": {"type": "object", "properties": {"mode": {"type": "string", "enum": ["research", "explain", "concept", "focused"]}},
+     "description": "질문 의도 선택. research=개별 종목 전체 분석/관점 전환, industry=업황·수요 전망, compare=여러 기업 비교(업황 병행 가능), explain=직전 답변 설명, concept=개념, focused=특정 항목. 일반 질문은 반드시 적합한 모드를 선택해 기존 체크리스트와 분리합니다.",
+     "parameters": {"type": "object", "properties": {"mode": {"type": "string", "enum": ["research", "explain", "concept", "focused", "industry", "compare"]}},
                     "required": ["mode"], "additionalProperties": False}, "strict": True},
     *[{"type": "function", "name": name, "description": description,
        "parameters": {"type": "object", "properties": {}, "required": [], "additionalProperties": False}, "strict": True}
@@ -141,6 +152,10 @@ class OpenAIConversation:
         이는 날짜 범위가 아니라 제공된 최신 회계기간 개수 기준의 선택이다.
         """
         view = deepcopy({key: value for key, value in resources.items() if not key.startswith("_")})
+        if 'question_sources' in view:
+            now = datetime.now(timezone.utc).timestamp()
+            view['question_sources'] = {key: item for key, item in view['question_sources'].items()
+                                        if now - item['timestamp'] < 300}
         if state.horizon != Horizon.LONG:
             view.pop('valuation', None)
         original = resources.get("_financials_original", resources.get("financials"))
@@ -224,9 +239,46 @@ class OpenAIConversation:
             args = json.loads(arguments)
             if not isinstance(args, dict):
                 raise ValueError
+            if name in {'search_topic_news', 'get_company_data'}:
+                # 자동 조사는 현재 단일 종목 상태와 분리한다. 키에 종목/자료/기간을 모두 포함한다.
+                if name == 'search_topic_news':
+                    if set(args) != {'query', 'days'} or not isinstance(args['query'], str) or not 1 <= len(args['query'].strip()) <= 200 or args['days'] not in (7, 30, 90):
+                        raise ValueError
+                    label = args['query'].strip()
+                else:
+                    if set(args) != {'code', 'exchange', 'horizon', 'kind'} or args['horizon'] not in ('단기', '중기', '장기') or args['kind'] not in ('financials', 'news', 'technicals', 'valuation'):
+                        raise ValueError
+                    identity = (args['code'], args['exchange'])
+                    if identity != (state.code, state.exchange) and not any((s['code'], s['exchange']) == identity for s in resources.get('_stock_candidates', [])):
+                        return {'error': '먼저 search_stock으로 이 기업을 확인하세요.'}
+                    stock = stock_identity(*identity)
+                    if args['kind'] == 'valuation' and args['horizon'] != '장기':
+                        return {'error': '가치평가 자료 범위는 장기만 허용합니다.'}
+                    label = f"{stock['name']} · {args['horizon']} · {args['kind']}"
+                key = json.dumps([name, args], sort_keys=True, ensure_ascii=False)
+                store = resources.setdefault('question_sources', {})
+                now = datetime.now(timezone.utc).timestamp()
+                previous = store.get(key)
+                if previous and now - previous['timestamp'] < 300:
+                    return {**previous, 'reused': True}
+                if name == 'search_topic_news':
+                    result = topic_news(args['query'], args['days'])
+                elif args['kind'] == 'financials':
+                    result = financials(stock, args['horizon'])
+                elif args['kind'] == 'news':
+                    result = news(stock, args['horizon'])
+                elif args['kind'] == 'valuation':
+                    result = valuation_comparison(stock)
+                else:
+                    result = analyze(price_history(stock, args['horizon']))
+                entry = {'label': label, 'request': args, 'timestamp': now, 'data': result}
+                store[key] = entry
+                while len(store) > 12:
+                    del store[next(iter(store))]
+                return entry
             if name == "set_response_mode":
                 mode = args.get("mode")
-                if set(args) != {"mode"} or mode not in {"research", "explain", "concept", "focused"}:
+                if set(args) != {"mode"} or mode not in {"research", "explain", "concept", "focused", "industry", "compare"}:
                     raise ValueError
                 resources["_response_mode"] = mode
                 return {"mode": mode, "rule": "과거 답변 설명은 당시 기준으로만 합니다. 새 종목/관점 분석은 research이며, 최신 사실은 유효한 자료 또는 새 조회가 필요합니다."}
@@ -311,8 +363,12 @@ class OpenAIConversation:
                 state.stage = "ready_for_research" if selected else "awaiting_horizon"
                 if not same_stock:
                     candidates = resources.get('_stock_candidates', [])
+                    question_sources = resources.get('question_sources', {})
+                    mode = resources.get('_response_mode', 'research')
                     resources.clear()
                     resources['_stock_candidates'] = candidates
+                    resources['question_sources'] = question_sources
+                    resources['_response_mode'] = mode
                 elif not same_context:
                     resources["attempted_tools"] = []
                 self.prune_resources(state, resources)
@@ -351,12 +407,12 @@ class OpenAIConversation:
         이 함수는 전제조건을 강제하되, 확정된 상태에서는 재사용/추가 조회 선택을 허용한다.
         """
         current = [state.code, state.exchange, state.horizon.value if state.horizon else None]
-        names = {"search_stock", "set_research_context", "set_response_mode"}
+        names = {"search_stock", "set_research_context", "set_response_mode", "search_topic_news", "get_company_data"}
         if expected_context is None or current == expected_context:
             names.update(self.required_tools(state))
         return [tool for tool in TOOLS if tool["name"] in names]
 
-    def respond(self, message: str, on_progress=None) -> str:
+    def respond(self, message: str, on_progress=None, *, selection="자동") -> str:
         """한 사용자 메시지를 처리하며 필요한 만큼 모델/도구 왕복을 수행한다.
 
         반환값은 화면용 답변 문자열이다. 부가 결과는 성공 시 self.research,
@@ -426,6 +482,7 @@ class OpenAIConversation:
             repair_missing = False
             # 역할 지시문에 공통 조사 기준과 이번 대화의 현재 상태를 덧붙인다.
             instructions = PROMPT.read_text(encoding="utf-8")
+            instructions += "\n화면 선택: " + selection + " (사용자가 문장에 명시한 기간이 우선). 자동은 투자 기간이 아니라 질문 의도에 맞춘 처리 방식이다."
             instructions += "\n조사 기준:\n" + json.dumps(RESEARCH_FOCUS, ensure_ascii=False)
             trace = []
             # trace/steps는 이번 턴만 기록한다. 실패 시에는 이전 성공 결과를 덮어쓰지 않는다.
@@ -438,6 +495,8 @@ class OpenAIConversation:
                 # 모드 선택은 모델에게 맡기되 새 종목/관점 분석의 필수 자료 검증은 우회하지 않는다.
                 changed = (current_state.code, current_state.exchange, current_state.horizon) != initial_context
                 mode = current_resources.get("_response_mode", "research")
+                if mode in {'industry', 'compare'}:
+                    return []
                 if not changed and mode in {"concept", "focused"}:
                     return []
                 if not changed and mode == "explain" and self.dialogue:
@@ -480,7 +539,22 @@ class OpenAIConversation:
                     view = self.scoped_resources(view_state, view_resources)
                     if [view_state.code, view_state.exchange] != [state.code, state.exchange]:
                         view = {}
-                    bank = evidence_bank(list(RESEARCH_FOCUS[view_state.horizon]) if view_state.horizon else [], view)
+                    general = resources.get('_response_mode') != 'research'
+                    checklist = resources.get('_response_mode') in {'research', 'focused'}
+                    bank = evidence_bank(list(RESEARCH_FOCUS[view_state.horizon]) if view_state.horizon and checklist else [], view)
+                    if general:
+                        now = datetime.now(timezone.utc).timestamp()
+                        for entry in view.get('question_sources', {}).values():
+                            if now - entry['timestamp'] > 300:
+                                continue
+                            data = entry['data']
+                            index = len(bank)
+                            sources = [] if data.get('status') not in {'ok', 'partial'} else [{
+                                'id': f'q{index}', 'path': 'question_sources', 'value': data,
+                                'source': data.get('source', ''), 'as_of': data.get('as_of', ''),
+                                'fetched_at': data.get('fetched_at', ''), 'status': data.get('status', '')}]
+                            bank.append({'id': index, 'criterion': entry['label'], 'sources': sources,
+                                         'limitations': '조회 범위와 출처를 확인하세요. 뉴스는 제목만 제공됩니다.'})
                     # 자료마다 이번 호출에서 유효한 ID를 붙인다. 최종 sections의 source_ids가
                     # 어떤 원본을 가리키는지 서버가 확인할 수 있게 이 목록을 모델에도 제공한다.
                     response_instructions = instructions + "\n" + ANSWER_INSTRUCTIONS
@@ -588,6 +662,7 @@ class OpenAIConversation:
                                                      if name not in resources.get("attempted_tools", [])]
                         # 저장소와 공개 자료를 분리하여 내부 원본이 HTTP 응답에 섞이지 않게 한다.
                         research = self.scoped_resources(state, resources)
+                        research['response_mode'] = resources.get('_response_mode', 'research')
                         coverage = declared_coverage(answer, claims, bank)
                         record_step({"round": round_number, "event": "최종 답변", "detail":
                             "응답 형식과 필수 자료 조건을 확인하고 최종 답변을 전달합니다."})

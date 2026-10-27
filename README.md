@@ -310,6 +310,20 @@ Refresh replaces the local snapshot only after all six downloads and validation
 succeed. No API key is needed for these public master files.
 Keep actual API keys in a local `.env` file, never in source code.
 
+## Automatic Question Mode
+
+The composer defaults to automatic mode, separate from the last stock's investment
+horizon. The model selects industry, compare, explain, concept, focused, or research
+with `set_response_mode`. Full stock research keeps its existing horizon checklist.
+`search_topic_news` searches topic headlines without requiring a stock.
+`get_company_data` fetches one verified company's requested dataset and scope without
+changing the active stock. Comparison datasets are keyed by identity, kind and scope,
+limited to 12 entries, and reusable for five minutes. General answers display their
+queried evidence instead of the previous stock's checklist. News tools return titles,
+not article bodies or verified guidance; missing information must remain explicit.
+Run `node tests/browser_auto.cjs` against the local server (default port 8766) to
+check the selector and follow-up behavior with mocked responses and no model cost.
+
 ## Stock Search Fallback
 
 Chat stock resolution is model-driven: interpret a nickname or typo, call

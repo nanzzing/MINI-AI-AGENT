@@ -272,6 +272,9 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError
             data = json.loads(self.rfile.read(length))
             message = data.get("message")
+            selection = data.get('selection', '자동')
+            if selection not in ('자동', '단기', '중기', '장기'):
+                raise ValueError
             if not isinstance(message, str) or not message.strip() or len(message) > 2000:
                 raise ValueError
         except (ValueError, AttributeError, UnicodeDecodeError):
@@ -297,10 +300,10 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if streaming:
                 self.start_chat_stream(token)
-                reply = conversation.respond(message, on_progress=lambda step:
+                reply = conversation.respond(message, selection=selection, on_progress=lambda step:
                                              self.send_chat_event({'type': 'progress', 'step': step}))
             else:
-                reply = conversation.respond(message)
+                reply = conversation.respond(message, selection=selection)
             # respond가 성공한 상태만 읽는다. 문자열 답변과 별도로 구조화된 자료를 보내야
             # 브라우저가 체크리스트, 재무표, 도구 내역을 텍스트에서 재추출하지 않아도 된다.
             # 답변 외에 종목·기간·도구 실행 내역을 함께 보내 화면 상태도 맞춘다.
@@ -316,6 +319,9 @@ class Handler(BaseHTTPRequestHandler):
                       "research": conversation.research,
                       "focus": list(RESEARCH_FOCUS[state.horizon]) if state.horizon else []}
             result["coverage"] = conversation.coverage
+            if conversation.research.get('response_mode', 'research') != 'research':
+                result['focus'] = [row['criterion'] for row in conversation.coverage]
+                result['horizon'] = None
             # coverage는 답변 생성 모델이 함께 반환한 근거 선언이다.
             # 여기서 별도 평가 모델을 호출하거나 투자 사실성을 검증하지 않는다.
         except ClientDisconnected:

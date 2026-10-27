@@ -5,17 +5,21 @@ from datetime import date, datetime, timezone
 from io import StringIO
 import json
 import math
+import os
+from pathlib import Path
 from threading import Lock
 from time import monotonic
-from urllib.request import Request, urlopen
+from urllib.request import Request, urlopen, build_opener, HTTPRedirectHandler
+from urllib.error import HTTPError
+from dotenv import dotenv_values
 
 VIX_URL = 'https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv'
-CNN_URL = 'https://production.dataviz.cnn.io/index/fearandgreed/graphdata'
+OANOR_URL = 'https://api.oanor.com/stockfeargreed-api/v1/index'
 FRED_URL = 'https://fred.stlouisfed.org/graph/fredgraph.csv?id='
 SOURCES = {
     'vix': ('Cboe', 'https://www.cboe.com/tradable_products/vix/vix_historical_data'),
     'buffett': ('FRED / Fed / BEA', 'https://fred.stlouisfed.org/series/NCBEILQ027S'),
-    'fear_greed': ('CNN', 'https://www.cnn.com/markets/fear-and-greed'),
+    'fear_greed': ('CNN / OANOR', 'https://www.oanor.com/api/stockfeargreed-api'),
 }
 _CACHE = {}
 _LOCKS = {key: Lock() for key in SOURCES}
@@ -80,19 +84,58 @@ def buffett():
             'description': '분기 대체 지표: 미국 비금융기업 주식가치 / 명목 GDP(연율). 전체 상장시장 시가총액과 범위가 다르며 실시간 버핏지수가 아닙니다. 공표 후 수정될 수 있습니다.'}
 
 
+class IndicatorError(Exception):
+    """화면에 노출해도 되는 고정 오류 문구만 담는다."""
+
+
+def oanor_key():
+    # 키를 응답/로그/URL에 넣지 않는다. 환경변수가 로컬 .env보다 우선한다.
+    values = dotenv_values(Path(__file__).resolve().parents[2] / '.env')
+    return (os.environ.get('OANOR_API_KEY', values.get('OANOR_API_KEY') or '')).strip()
+
+
+class NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        # 인증 헤더를 다른 주소에 전달하지 않는다.
+        raise IndicatorError('OANOR 연결 주소 변경 · 조회 불가')
+
+
+def read_oanor():
+    key = oanor_key()
+    if not key or key == 'aaa':
+        raise IndicatorError('OANOR API 키 미설정')
+    request = Request(OANOR_URL, headers={'x-oanor-key': key, 'Accept': 'application/json',
+                                        'User-Agent': 'MiniAIResearch/0.1'})
+    try:
+        with build_opener(NoRedirect()).open(request, timeout=10) as response:
+            raw = response.read(2_000_001)
+    except HTTPError as error:
+        error.close()
+        messages = {401: 'OANOR API 키 인증 실패', 402: 'OANOR 상품 구독 확인 필요',
+                    403: 'OANOR 접근 권한 확인 필요', 429: 'OANOR 호출 한도 초과',
+                    502: 'OANOR 원본 데이터 조회 실패'}
+        raise IndicatorError(messages.get(error.code, 'OANOR 서비스 응답 오류')) from None
+    if len(raw) > 2_000_000:
+        raise ValueError('oversized response')
+    return json.loads(raw.decode('utf-8-sig'))
+
+
 def fear_greed():
-    data = json.loads(read_public(CNN_URL))['fear_and_greed']
+    payload = read_oanor()
+    if payload.get('success') is not True or payload.get('status') != 'ok':
+        raise IndicatorError('OANOR 데이터 조회 실패')
+    data = payload['data']
     value = finite(data['score'])
     if not 0 <= value <= 100:
         raise ValueError('score range')
-    stamp = datetime.fromisoformat(data['timestamp'].replace('Z', '+00:00'))
+    stamp = datetime.fromisoformat(data['updated'].replace('Z', '+00:00'))
     if stamp.tzinfo is None or stamp > datetime.now(timezone.utc):
         raise ValueError('invalid timestamp')
     ratings = {'extreme fear': '극도의 공포', 'fear': '공포', 'neutral': '중립',
                'greed': '탐욕', 'extreme greed': '극도의 탐욕'}
     return {'value': value, 'unit': '/100', 'as_of': stamp.isoformat(),
             'period': stamp.date().isoformat(), 'rating': ratings.get(str(data.get('rating', '')).lower(), ''),
-            'description': '미국 주식 공포·탐욕지수. CNN 웹 데이터 경로는 비공식 연동으로 변경·차단될 수 있습니다. 암호화폐 지수가 아닙니다.'}
+            'description': 'CNN 미국 주식 공포·탐욕지수 · OANOR 중계. 기준일은 공급자가 반환한 데이터 갱신 시각이며 실시간 보장이 아닙니다.'}
 
 
 def indicator(name):
@@ -107,13 +150,14 @@ def indicator(name):
         try:
             result = {**{'vix': vix, 'buffett': buffett, 'fear_greed': fear_greed}[name](),
                       'status': 'ok', 'fetched_at': checked}
-        except Exception:
+        except Exception as error:
+            message = str(error) if isinstance(error, IndicatorError) else '공급원 접근 제한 또는 자료 조회 실패'
             # 실패를 0으로 바꾸지 않는다. 마지막 값은 기준일과 갱신 실패 상태를 유지한다.
             if previous and previous[1].get('value') is not None:
-                result = {**previous[1], 'status': 'stale', 'message': '갱신 실패 · 이전 자료'}
+                result = {**previous[1], 'status': 'stale', 'message': message + ' · 이전 자료'}
             else:
                 result = {'status': 'unavailable', 'value': None, 'as_of': None,
-                          'message': '공급원 접근 제한 또는 자료 조회 실패'}
+                          'message': message}
         result.update(id=name, source=source, url=url, market='US', checked_at=checked)
         _CACHE[name] = (monotonic(), result)
         return deepcopy(result)

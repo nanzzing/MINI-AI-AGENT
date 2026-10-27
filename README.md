@@ -120,10 +120,19 @@ label and its original observation date, never a fabricated zero.
   quarter. The numerator is nonfinancial corporate equity value in millions of
   USD, not total listed market capitalization; GDP is billions of USD at an
   annual rate. The visible proxy label and formula disclosure are intentional.
-- CNN stock Fear & Greed: optional CNN web data endpoint. This is not a supported
-  public developer API. Current local verification returned HTTP 418. The tile
-  remains visible as unavailable with an official page link. No blocking bypass,
-  cryptocurrency substitution, or invented score is used.
+- CNN stock Fear & Greed: OANOR `/stockfeargreed-api/v1/index` gateway.
+  Set `OANOR_API_KEY` in local `.env` (environment variables take precedence).
+  Subscribe to the corresponding API plan in OANOR; a key alone may not suffice.
+  Restart the Python server after deploying this change. Configuration changes
+  can otherwise take up to five minutes to outlive the response cache.
+  The key is sent server-side in `x-oanor-key`, never in URLs or browser payloads;
+  redirects are rejected. The tile shows score, rating and upstream `updated`
+  date, with CNN and OANOR links. Missing key, authentication, subscription and
+  quota failures get safe messages. Failed refreshes preserve the prior value.
+  Direct CNN fetching is no longer used. No crypto substitution is made.
+  Unit/browser tests use mock responses; real freshness and account access must
+  be verified after adding a key. Published quotas and redistribution rights
+  must be checked against the selected provider plan before public deployment.
 
 Review provider redistribution/licensing terms before public deployment. Source
 links and reference periods remain visible. Tests: `tests/test_market_indicators.py`

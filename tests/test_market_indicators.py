@@ -1,5 +1,6 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
+from urllib.error import HTTPError
 from mini_ai_agent import market_indicators as m
 
 
@@ -29,13 +30,44 @@ class MarketIndicatorTests(unittest.TestCase):
         self.assertIsNone(result['value'])
 
     def test_cnn_zero_is_valid_and_out_of_range_is_not(self):
-        with patch.object(m, 'read_public', return_value='{"fear_and_greed":{"score":0,"timestamp":"2025-01-01T12:00:00Z","rating":"extreme fear"}}'):
+        with patch.object(m, 'read_oanor', return_value={'success': True, 'status': 'ok', 'data': {'score': 0, 'updated': '2025-01-01T12:00:00Z', 'rating': 'extreme fear'}}):
             result = m.indicator('fear_greed')
         self.assertEqual(result['value'], 0)
         self.assertEqual(result['rating'], '극도의 공포')
         m._CACHE.clear()
-        with patch.object(m, 'read_public', return_value='{"fear_and_greed":{"score":101}}'):
+        with patch.object(m, 'read_oanor', return_value={'success': True, 'status': 'ok', 'data': {'score': 101}}):
             self.assertEqual(m.indicator('fear_greed')['status'], 'unavailable')
+
+    def test_oanor_missing_key_never_connects(self):
+        with patch.object(m, 'oanor_key', return_value=''), patch.object(m, 'build_opener') as opener:
+            result = m.indicator('fear_greed')
+        self.assertEqual(result['message'], 'OANOR API 키 미설정')
+        opener.assert_not_called()
+
+    def test_oanor_transport_and_safe_errors(self):
+        opener = MagicMock()
+        opener.open.return_value.__enter__.return_value.read.return_value = b'{"success":true}'
+        with patch.object(m, 'oanor_key', return_value='test-secret'), patch.object(m, 'build_opener', return_value=opener):
+            self.assertTrue(m.read_oanor()['success'])
+            request = opener.open.call_args.args[0]
+            self.assertEqual(request.full_url, m.OANOR_URL)
+            self.assertEqual(request.get_header('X-oanor-key'), 'test-secret')
+            for code, label in [(401, '인증 실패'), (402, '구독'), (429, '한도'), (502, '원본')]:
+                m._CACHE.clear()
+                opener.open.side_effect = HTTPError(m.OANOR_URL, code, 'test-secret', {}, None)
+                result = m.indicator('fear_greed')
+                self.assertIn(label, result['message'])
+                self.assertNotIn('test-secret', str(result))
+
+    def test_oanor_invalid_payload_and_date(self):
+        for data in [{'score': 50, 'updated': '2099-01-01T00:00:00Z'},
+                     {'score': 50, 'updated': '2025-01-01'},
+                     {'score': True, 'updated': '2025-01-01T00:00:00Z'}]:
+            m._CACHE.clear()
+            with patch.object(m, 'read_oanor', return_value={'success': True, 'status': 'ok', 'data': data}):
+                self.assertEqual(m.indicator('fear_greed')['status'], 'unavailable')
+        with self.assertRaises(m.IndicatorError):
+            m.NoRedirect().redirect_request(None, None, 302, '', {}, 'https://example.com')
 
     def test_failure_cached_and_previous_value_marked_stale(self):
         with patch.object(m, 'vix', return_value={'value': 20, 'as_of': '2025-01-01'}):

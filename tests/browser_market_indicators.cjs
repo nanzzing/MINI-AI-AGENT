@@ -17,7 +17,7 @@ const {chromium} = require('C:/Users/Park Chan Wan/.cache/codex-runtimes/codex-p
           unit:name==='buffett'?'%':name==='fear_greed'?'/100':'', period:name==='buffett'?'2026 Q2':'2026-10-21',
           rating:name==='fear_greed'?'극도의 공포':''}});
       });
-      await page.goto('http://127.0.0.1:8766/');
+      await page.goto(process.env.MINI_AGENT_URL || 'http://127.0.0.1:8765/');
       await page.waitForFunction(() => document.querySelector('[data-indicator="fear_greed"] .pulse-value').textContent==='0');
       assert.equal(await page.locator('[role="meter"]').count(),1);
       assert.equal(await page.locator('[data-indicator="fear_greed"] [role="meter"]').getAttribute('aria-valuenow'),'0');

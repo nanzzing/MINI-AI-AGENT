@@ -37,7 +37,7 @@
         const period = data.period || data.as_of || '';
         node.querySelector('.pulse-date').textContent = available
           ? `${period} 기준${data.rating ? ` · ${data.rating}` : ''}${data.status === 'stale' ? ' · 갱신 실패' : ''}`
-          : '조회 불가';
+          : (data.message || '조회 불가');
         node.title = data.description || data.message || '';
         node.dataset.status = data.status;
       } catch {

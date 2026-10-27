@@ -45,9 +45,9 @@ def log_failure(error, *, stage, started, **context):
     _LOGGER.warning('%s', json.dumps(fields, ensure_ascii=True))
 
 
-def read_public(url):
+def read_public(url, *, timeout=10):
     # 고정된 공급자 URL만 사용한다. 차단 우회·인증·무제한 재시도는 하지 않는다.
-    with urlopen(Request(url, headers={'User-Agent': 'MiniAIResearch/0.1'}), timeout=10) as response:
+    with urlopen(Request(url, headers={'User-Agent': 'MiniAIResearch/0.1'}), timeout=timeout) as response:
         raw = response.read(2_000_001)
     if len(raw) > 2_000_000:
         raise ValueError('oversized response')
@@ -83,7 +83,7 @@ def quarterly(series):
     stage = 'fetch_csv'
     rows, rejected = 0, 0
     try:
-        raw = read_public(FRED_URL + series)
+        raw = read_public(FRED_URL + series, timeout=25)
         stage = 'csv_columns'
         reader = csv.DictReader(StringIO(raw))
         if not {'observation_date', series}.issubset(reader.fieldnames or []):

@@ -10,6 +10,20 @@ class MarketIndicatorTests(unittest.TestCase):
     def setUp(self):
         m._CACHE.clear()
 
+    def test_fred_timeout_is_25_seconds(self):
+        with patch.object(m, 'read_public', return_value='observation_date,GDP\n2025-01-01,25000\n') as read:
+            m.quarterly('GDP')
+        read.assert_called_once_with(m.FRED_URL + 'GDP', timeout=25)
+
+    def test_public_timeout_default_and_override(self):
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = b'example'
+        with patch.object(m, 'urlopen', return_value=response) as open_url:
+            m.read_public(m.VIX_URL)
+            self.assertEqual(open_url.call_args.kwargs['timeout'], 10)
+            m.read_public(m.FRED_URL + 'GDP', timeout=25)
+            self.assertEqual(open_url.call_args.kwargs['timeout'], 25)
+
     def test_vix_sorted_valid_daily_close(self):
         text = 'DATE,CLOSE\n01/03/2025,18\n01/02/2025,19\n01/04/2025,NaN\n01/05/2025,-1\n'
         with patch.object(m, 'read_public', return_value=text):

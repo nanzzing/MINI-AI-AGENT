@@ -12,7 +12,8 @@
     await Promise.all(elements.map(async node => {
       try {
         const response = await fetch(`/api/market-indicator?name=${node.dataset.indicator}`, {
-          signal: AbortSignal.timeout(30000), cache: 'no-store',
+          // 버핏지수는 최대 25초인 FRED 요청 두 건을 순서대로 기다린다.
+          signal: AbortSignal.timeout(node.dataset.indicator === 'buffett' ? 60000 : 30000), cache: 'no-store',
         });
         if (!response.ok) throw new Error('request');
         const data = await response.json();

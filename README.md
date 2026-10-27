@@ -279,3 +279,50 @@ py -m mini_ai_agent.stocks
 Refresh replaces the local snapshot only after all six downloads and validation
 succeed. No API key is needed for these public master files.
 Keep actual API keys in a local `.env` file, never in source code.
+
+## Yahoo diagnostics: local vs Render
+
+Run the same symbol on both hosts, near the same time. Deploy this code before
+running the Render command. This reads Yahoo only; it does not call the LLM.
+
+Local PowerShell, from the project root:
+
+```powershell
+.\.venv\Scripts\python.exe -m mini_ai_agent.yahoo_diagnostics --symbol 005930.KS
+```
+
+Render Shell (not your local terminal):
+
+```sh
+python -m mini_ai_agent.yahoo_diagnostics --symbol 005930.KS
+```
+
+Shell is not required: on Render, the normal server automatically starts a
+background diagnosis for `005930.KS` once per server process startup. Keep the
+existing Start Command. Search Render Logs for `yahoo_diagnostic`: start,
+environment, eight operation results, then complete. Web serving is not blocked;
+each probe has its own subprocess and a 45-second deadline. A restart, including
+waking a sleeping service, runs the diagnosis again. After collecting the logs,
+set `YAHOO_DIAGNOSTICS_ON_START=0` in Render Environment to disable it and avoid
+unnecessary Yahoo requests. Local startup defaults to disabled; set the variable
+to `1` to enable explicitly. No LLM requests or public diagnostic endpoint.
+
+Without `--probe`, all eight checks run sequentially (up to about six minutes).
+Other probe names: history,
+yearly_income, yearly_balance, yearly_cashflow, quarterly_income,
+quarterly_balance, quarterly_cashflow.
+
+Compare `yahoo_diagnostic_environment` first: Python, OS and package versions.
+Each `yahoo_diagnostic` reports the symbol, operation, duration, field/row counts,
+missing valuation fields, observed HTTP error codes and safe error categories.
+`ok` means returned data, not independently verified financial correctness.
+`partial` means some requested info fields are missing; `empty` means no usable
+data; `error` means an exception; `timeout` means the 45-second probe deadline.
+An HTTP 401 with final `ok` may be a recovered intermediate request failure.
+No observed HTTP code does not prove no HTTP error occurred: yfinance may hide it.
+
+Each probe runs in a separate process without application caches; yfinance's
+existing on-disk cookie cache is left intact. No keys, cookie/crumb values, raw
+response bodies, raw exception text, proxy addresses or account details are
+included in the report. Do not enable yfinance debug logging to share results.
+This diagnoses failure scope, not Yahoo's private IP-blocking decisions.

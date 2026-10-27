@@ -21,6 +21,7 @@ from mini_ai_agent.discovery import discover
 from mini_ai_agent.market_data import stock_identity, price_history, financials, policy
 from mini_ai_agent.chatgpt import ChatGPTConnection, ChatGPTError
 from mini_ai_agent.market_indicators import indicator
+from mini_ai_agent.yahoo_diagnostics import start_startup_diagnostics
 
 STATIC = Path(__file__).parent / "static"
 # 쿠키의 임의 식별자로 사용자별 대화를 구분한다. 서버를 종료하면 이 메모리는 사라진다.
@@ -343,6 +344,7 @@ def main() -> None:
     server.csrf = secrets.token_urlsafe(32)
     # 여러 사용자의 요청을 스레드로 처리한다. 개별 대화의 동시 변경은 llm.py에서 잠근다.
     print(f"MINI-AI-AGENT: http://{args.host}:{args.port}", flush=True)
+    start_startup_diagnostics()
     try:
         server.serve_forever()
     except KeyboardInterrupt:

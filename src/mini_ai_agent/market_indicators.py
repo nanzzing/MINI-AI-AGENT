@@ -4,6 +4,7 @@ import csv
 from datetime import date, datetime, timezone
 from io import StringIO
 import json
+import logging
 import math
 import os
 from pathlib import Path
@@ -23,6 +24,25 @@ SOURCES = {
 }
 _CACHE = {}
 _LOCKS = {key: Lock() for key in SOURCES}
+_LOGGER = logging.getLogger(__name__)
+
+
+def log_failure(error, *, stage, started, **context):
+    # 원본 예외 메시지/URL/헤더/본문에는 비밀값이 섞일 수 있어 기록하지 않는다.
+    # HTTP 코드, DNS/TLS/timeout 예외 타입과 errno만으로 전송 실패를 구분한다.
+    reason = getattr(error, 'reason', None)
+    fields = dict(event='market_indicator_failure', stage=stage,
+                  elapsed_ms=round((monotonic() - started) * 1000),
+                  error_type=type(error).__name__, **context)
+    if isinstance(error, HTTPError):
+        fields['http_status'] = error.code
+    if isinstance(reason, BaseException):
+        fields['reason_type'] = type(reason).__name__
+    for key in ('errno', 'verify_code'):
+        value = getattr(reason if isinstance(reason, BaseException) else error, key, None)
+        if isinstance(value, int):
+            fields[key] = value
+    _LOGGER.warning('%s', json.dumps(fields, ensure_ascii=True))
 
 
 def read_public(url):
@@ -59,22 +79,48 @@ def vix():
 
 
 def quarterly(series):
-    values = {}
-    for row in csv.DictReader(StringIO(read_public(FRED_URL + series))):
-        try:
-            day = date.fromisoformat(row['observation_date'])
-            value = finite(row[series])
-            if value > 0 and day <= datetime.now(timezone.utc).date():
-                values[(day.year, (day.month - 1) // 3 + 1)] = value
-        except (KeyError, ValueError, TypeError):
-            continue
-    return values
+    started = monotonic()
+    stage = 'fetch_csv'
+    rows, rejected = 0, 0
+    try:
+        raw = read_public(FRED_URL + series)
+        stage = 'csv_columns'
+        reader = csv.DictReader(StringIO(raw))
+        if not {'observation_date', series}.issubset(reader.fieldnames or []):
+            raise ValueError('missing required columns')
+        stage = 'valid_observations'
+        values = {}
+        for row in reader:
+            rows += 1
+            try:
+                day = date.fromisoformat(row['observation_date'])
+                value = finite(row[series])
+                if value > 0 and day <= datetime.now(timezone.utc).date():
+                    values[(day.year, (day.month - 1) // 3 + 1)] = value
+                else:
+                    rejected += 1
+            except (KeyError, ValueError, TypeError):
+                rejected += 1
+        if not values:
+            raise ValueError('no valid observations')
+        return values
+    except Exception as error:
+        log_failure(error, stage=stage, started=started, indicator='buffett',
+                    provider='FRED', series=series, rows=rows, rejected_rows=rejected)
+        raise
 
 
 def buffett():
     equities, gdp = quarterly('NCBEILQ027S'), quarterly('GDP')
     # 같은 분기의 관측값만 결합한다. 주식가치 백만 달러, GDP 십억 달러(연율).
-    year, quarter = max(equities.keys() & gdp.keys())
+    common = equities.keys() & gdp.keys()
+    if not common:
+        error = ValueError('no common quarter')
+        log_failure(error, stage='common_quarter', started=monotonic(),
+                    indicator='buffett', provider='FRED',
+                    equities_periods=len(equities), gdp_periods=len(gdp))
+        raise error
+    year, quarter = max(common)
     key = (year, quarter)
     return {'value': equities[key] / (gdp[key] * 1000) * 100, 'unit': '%',
             'as_of': f'{year}-{(quarter - 1) * 3 + 1:02d}-01', 'period': f'{year} Q{quarter}',
@@ -147,10 +193,14 @@ def indicator(name):
             return deepcopy(previous[1])
         source, url = SOURCES[name]
         checked = datetime.now(timezone.utc).isoformat()
+        started = monotonic()
         try:
             result = {**{'vix': vix, 'buffett': buffett, 'fear_greed': fear_greed}[name](),
                       'status': 'ok', 'fetched_at': checked}
         except Exception as error:
+            log_failure(error, stage='indicator_result', started=started, indicator=name,
+                        checked_at=checked, previous_value_available=bool(previous and previous[1].get('value') is not None),
+                        failure_cache_seconds=300)
             message = str(error) if isinstance(error, IndicatorError) else '공급원 접근 제한 또는 자료 조회 실패'
             # 실패를 0으로 바꾸지 않는다. 마지막 값은 기준일과 갱신 실패 상태를 유지한다.
             if previous and previous[1].get('value') is not None:

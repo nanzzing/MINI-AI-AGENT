@@ -1,6 +1,8 @@
 import unittest
 from unittest.mock import patch, MagicMock
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
+import socket
+import ssl
 from mini_ai_agent import market_indicators as m
 
 
@@ -87,3 +89,43 @@ class MarketIndicatorTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 m.indicator('https://example.com')
             fetch.assert_not_called()
+
+    def test_fred_http_failure_logs_series_without_secret(self):
+        error = HTTPError('https://example.com/?key=private-secret', 403, 'private-secret', {}, None)
+        with patch.object(m, 'read_public', side_effect=error), self.assertLogs(m._LOGGER, level='WARNING') as logs:
+            result = m.indicator('buffett')
+        output = '\n'.join(logs.output)
+        self.assertIn('"series": "NCBEILQ027S"', output)
+        self.assertIn('"http_status": 403', output)
+        self.assertIn('"stage": "fetch_csv"', output)
+        self.assertIn('"elapsed_ms":', output)
+        self.assertNotIn('private-secret', output)
+        self.assertEqual(result['status'], 'unavailable')
+
+    def test_fred_gdp_network_failure_has_safe_reason_type(self):
+        for reason in (TimeoutError('private-secret'), socket.gaierror(-2, 'private-secret'), ssl.SSLError('private-secret')):
+            m._CACHE.clear()
+            with patch.object(m, 'read_public', side_effect=[
+                'observation_date,NCBEILQ027S\n2025-01-01,50000000\n', URLError(reason)
+            ]), self.assertLogs(m._LOGGER, level='WARNING') as logs:
+                m.indicator('buffett')
+            output = '\n'.join(logs.output)
+            self.assertIn('"series": "GDP"', output)
+            self.assertIn(f'"reason_type": "{type(reason).__name__}"', output)
+            self.assertNotIn('private-secret', output)
+
+    def test_fred_parse_and_empty_data_have_distinct_stages(self):
+        for raw, stage in [('<html>private-secret</html>', 'csv_columns'),
+                           ('observation_date,GDP\n2025-01-01,.\n', 'valid_observations')]:
+            with patch.object(m, 'read_public', return_value=raw), self.assertLogs(m._LOGGER, level='WARNING') as logs:
+                with self.assertRaises(ValueError):
+                    m.quarterly('GDP')
+            self.assertIn(f'"stage": "{stage}"', '\n'.join(logs.output))
+            self.assertNotIn('private-secret', '\n'.join(logs.output))
+
+    def test_no_common_period_logs_and_failure_cache_does_not_repeat(self):
+        with patch.object(m, 'quarterly', side_effect=[{(2024, 1): 1}, {(2025, 1): 1}]), self.assertLogs(m._LOGGER, level='WARNING') as logs:
+            m.indicator('buffett')
+            m.indicator('buffett')
+        self.assertEqual(len(logs.output), 2)
+        self.assertIn('"stage": "common_quarter"', logs.output[0])

@@ -1,5 +1,8 @@
 """차트 API의 표시 범위가 모델/재무의 분석 관점과 독립적인지 검증한다."""
 import unittest
+import http.client
+import json
+from threading import Thread
 from unittest.mock import MagicMock, patch
 from urllib.parse import urlencode
 
@@ -42,6 +45,37 @@ class MarketRouteTests(unittest.TestCase):
                 self.assertEqual(status, 200)
                 financials.assert_called_with(self.stock, horizon)
             prices.assert_not_called()
+
+
+class HealthRouteTests(unittest.TestCase):
+    def test_get_and_head_without_external_calls(self):
+        with patch.object(server.Handler, 'log_message'), \
+             patch.object(server, 'indicator') as indicator, \
+             patch.object(server, 'OpenAIConversation') as conversation:
+            httpd = server.ThreadingHTTPServer(('127.0.0.1', 0), server.Handler)
+            Thread(target=httpd.serve_forever, daemon=True).start()
+            try:
+                for method in ('GET', 'HEAD'):
+                    connection = http.client.HTTPConnection('127.0.0.1', httpd.server_port, timeout=3)
+                    try:
+                        connection.request(method, '/health')
+                        response = connection.getresponse()
+                        body = response.read()
+                        self.assertEqual(response.status, 200)
+                        self.assertIn('application/json', response.getheader('Content-Type'))
+                        self.assertEqual(int(response.getheader('Content-Length')), len(b'{"status": "ok"}'))
+                        self.assertIsNone(response.getheader('Set-Cookie'))
+                        if method == 'HEAD':
+                            self.assertEqual(body, b'')
+                        else:
+                            self.assertEqual(json.loads(body), {'status': 'ok'})
+                    finally:
+                        connection.close()
+                indicator.assert_not_called()
+                conversation.assert_not_called()
+            finally:
+                httpd.shutdown()
+                httpd.server_close()
 
 
 if __name__ == "__main__":

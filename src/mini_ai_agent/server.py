@@ -40,6 +40,7 @@ class Handler(BaseHTTPRequestHandler):
     """요청 하나를 처리하는 객체. 영속 상태는 Handler가 아니라 SESSIONS에 둔다.
 
     GET /              : 화면 파일
+    GET/HEAD /health   : 외부 공급자 호출 없는 서버 생존 확인
     GET /api/status    : 설정 유무와 관점별 체크리스트 (키 값은 제외)
     GET /api/market    : 차트용 전체 OHLCV 일봉
     GET /api/financials: 화면의 재무표 조회
@@ -117,7 +118,8 @@ class Handler(BaseHTTPRequestHandler):
             # 세션 쿠키를 JS에서 직접 읽지 못하게 하고 다른 사이트 요청에서의 전송을 제한한다.
             self.send_header("Set-Cookie", f"session={cookie}; HttpOnly; SameSite=Strict; Path=/")
         self.end_headers()
-        self.wfile.write(body)
+        if getattr(self, 'command', None) != 'HEAD':
+            self.wfile.write(body)
 
     def start_chat_stream(self, cookie):
         """진행 이벤트를 JSON 한 줄씩 보낸다. 기존 JSON 클라이언트는 그대로 지원한다."""
@@ -149,12 +151,23 @@ class Handler(BaseHTTPRequestHandler):
         except ClientDisconnected:
             pass
 
+    def do_HEAD(self) -> None:
+        # health만 지원한다. 다른 GET API를 실행해 불필요한 외부 조회를 만들지 않는다.
+        if urlparse(self.path).path == '/health':
+            self.do_GET()
+        else:
+            self.send_error(404)
+
     def do_GET(self) -> None:
         # URL의 경로와 query string을 분리한다. parse_qs 결과의 값은 항상 리스트다.
         # query 검색은 후보가 하나일 때만 확정하고, code 조회는 거래소까지 검증한다.
         parsed = urlparse(self.path)
         if not self.local_request_allowed():
             self.send_json(403, {'error': '이 로컬 서버의 주소에서 직접 접속해 주세요.'})
+            return
+        if parsed.path == '/health':
+            # 모델 인증/시장 데이터 상태가 아닌 HTTP 서버의 응답 가능 여부만 확인한다.
+            self.send_json(200, {'status': 'ok'})
             return
         if parsed.path == '/auth/callback':
             if self.chatgpt is None:

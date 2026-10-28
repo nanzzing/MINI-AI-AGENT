@@ -12,11 +12,12 @@ from threading import Lock
 from time import monotonic
 from urllib.request import Request, urlopen, build_opener, HTTPRedirectHandler
 from urllib.error import HTTPError
+from urllib.parse import urlencode
 from dotenv import dotenv_values
 
 VIX_URL = 'https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv'
 OANOR_URL = 'https://api.oanor.com/stockfeargreed-api/v1/index'
-FRED_URL = 'https://fred.stlouisfed.org/graph/fredgraph.csv?id='
+FRED_URL = 'https://api.stlouisfed.org/fred/series/observations'
 SOURCES = {
     'vix': ('Cboe', 'https://www.cboe.com/tradable_products/vix/vix_historical_data'),
     'buffett': ('FRED / Fed / BEA', 'https://fred.stlouisfed.org/series/NCBEILQ027S'),
@@ -78,23 +79,66 @@ def vix():
             'description': 'S&P 500 옵션 기반 기대 변동성 · 일별 종가, 실시간 아님'}
 
 
+def fred_key():
+    values = dotenv_values(Path(__file__).resolve().parents[2] / '.env')
+    return os.environ.get('FRED_API_KEY', values.get('FRED_API_KEY') or '').strip()
+
+
+class FredNoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise IndicatorError('FRED 연결 주소 변경 · 조회 불가')
+
+
+def read_fred(series):
+    """공식 API의 최근 40분기. 키가 쿼리에 포함되므로 URL/원본 예외는 노출하지 않는다."""
+    started, stage = monotonic(), 'api_configuration'
+    try:
+        if series not in {'NCBEILQ027S', 'GDP'}:
+            raise ValueError('unsupported series')
+        key = fred_key()
+        if not key or key == 'aaa':
+            raise IndicatorError('FRED API 키 미설정 · FRED_API_KEY를 확인하세요')
+        query = urlencode({'series_id': series, 'api_key': key, 'file_type': 'json',
+                           'sort_order': 'desc', 'limit': 40, 'units': 'lin'})
+        request = Request(FRED_URL + '?' + query, headers={
+            'Accept': 'application/json', 'User-Agent': 'MiniAIResearch/0.1'})
+        stage = 'api_connect_headers'
+        with build_opener(FredNoRedirect()).open(request, timeout=25) as response:
+            stage = 'api_read_body'
+            raw = response.read(2_000_001)
+        stage = 'api_json'
+        if len(raw) > 2_000_000:
+            raise ValueError('oversized response')
+        payload = json.loads(raw.decode('utf-8-sig'))
+        if not isinstance(payload, dict) or not isinstance(payload.get('observations'), list):
+            raise ValueError('missing observations')
+        return payload
+    except Exception as error:
+        log_failure(error, stage=stage, started=started, indicator='buffett', provider='FRED', series=series)
+        if isinstance(error, HTTPError):
+            error.close()
+            messages = {400: 'FRED 요청 또는 API 키 확인 필요', 401: 'FRED API 키 인증 실패',
+                        403: 'FRED 접근 권한 확인 필요', 429: 'FRED 호출 한도 초과'}
+            raise IndicatorError(messages.get(error.code, 'FRED API 응답 오류')) from None
+        raise
+
+
 def quarterly(series):
     started = monotonic()
-    stage = 'fetch_csv'
+    stage = 'fetch_api'
     rows, rejected = 0, 0
     try:
-        raw = read_public(FRED_URL + series, timeout=25)
-        stage = 'csv_columns'
-        reader = csv.DictReader(StringIO(raw))
-        if not {'observation_date', series}.issubset(reader.fieldnames or []):
-            raise ValueError('missing required columns')
+        payload = read_fred(series)
+        stage = 'api_observations'
+        if not isinstance(payload, dict) or not isinstance(payload.get('observations'), list):
+            raise ValueError('missing observations')
         stage = 'valid_observations'
         values = {}
-        for row in reader:
+        for row in payload['observations']:
             rows += 1
             try:
-                day = date.fromisoformat(row['observation_date'])
-                value = finite(row[series])
+                day = date.fromisoformat(row['date'])
+                value = finite(row['value'])
                 if value > 0 and day <= datetime.now(timezone.utc).date():
                     values[(day.year, (day.month - 1) // 3 + 1)] = value
                 else:

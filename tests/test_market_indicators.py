@@ -3,6 +3,8 @@ from unittest.mock import patch, MagicMock
 from urllib.error import HTTPError, URLError
 import socket
 import ssl
+import json
+from urllib.parse import parse_qs, urlparse
 from mini_ai_agent import market_indicators as m
 
 
@@ -11,9 +13,18 @@ class MarketIndicatorTests(unittest.TestCase):
         m._CACHE.clear()
 
     def test_fred_timeout_is_25_seconds(self):
-        with patch.object(m, 'read_public', return_value='observation_date,GDP\n2025-01-01,25000\n') as read:
-            m.quarterly('GDP')
-        read.assert_called_once_with(m.FRED_URL + 'GDP', timeout=25)
+        opener = MagicMock()
+        opener.open.return_value.__enter__.return_value.read.return_value = b'{"observations":[{"date":"2025-01-01","value":"25000"}]}'
+        with patch.object(m, 'fred_key', return_value='test-secret'), patch.object(m, 'build_opener', return_value=opener):
+            self.assertEqual(m.quarterly('GDP'), {(2025, 1): 25000})
+        self.assertEqual(opener.open.call_args.kwargs['timeout'], 25)
+        request = opener.open.call_args.args[0]
+        self.assertTrue(request.full_url.startswith(m.FRED_URL + '?'))
+        params = parse_qs(urlparse(request.full_url).query)
+        self.assertEqual(params['api_key'], ['test-secret'])
+        self.assertEqual(params['series_id'], ['GDP'])
+        self.assertEqual(params['limit'], ['40'])
+        self.assertEqual(params['file_type'], ['json'])
 
     def test_public_timeout_default_and_override(self):
         response = MagicMock()
@@ -21,7 +32,7 @@ class MarketIndicatorTests(unittest.TestCase):
         with patch.object(m, 'urlopen', return_value=response) as open_url:
             m.read_public(m.VIX_URL)
             self.assertEqual(open_url.call_args.kwargs['timeout'], 10)
-            m.read_public(m.FRED_URL + 'GDP', timeout=25)
+            m.read_public(m.VIX_URL, timeout=25)
             self.assertEqual(open_url.call_args.kwargs['timeout'], 25)
 
     def test_vix_sorted_valid_daily_close(self):
@@ -32,9 +43,9 @@ class MarketIndicatorTests(unittest.TestCase):
         self.assertEqual(result['as_of'], '2025-01-03')
 
     def test_buffett_common_quarter_units_and_proxy_label(self):
-        with patch.object(m, 'read_public', side_effect=[
-            'observation_date,NCBEILQ027S\n2025-01-01,50000000\n2025-04-01,60000000\n',
-            'observation_date,GDP\n2025-01-01,25000\n2025-04-01,.\n']):
+        with patch.object(m, 'read_fred', side_effect=[
+            {'observations': [{'date': '2025-01-01', 'value': '50000000'}, {'date': '2025-04-01', 'value': '60000000'}]},
+            {'observations': [{'date': '2025-01-01', 'value': '25000'}, {'date': '2025-04-01', 'value': '.'}]}]):
             result = m.indicator('buffett')
         self.assertEqual(result['value'], 200)
         self.assertEqual(result['period'], '2025 Q1')
@@ -106,12 +117,12 @@ class MarketIndicatorTests(unittest.TestCase):
 
     def test_fred_http_failure_logs_series_without_secret(self):
         error = HTTPError('https://example.com/?key=private-secret', 403, 'private-secret', {}, None)
-        with patch.object(m, 'read_public', side_effect=error), self.assertLogs(m._LOGGER, level='WARNING') as logs:
+        with patch.object(m, 'read_fred', side_effect=error), self.assertLogs(m._LOGGER, level='WARNING') as logs:
             result = m.indicator('buffett')
         output = '\n'.join(logs.output)
         self.assertIn('"series": "NCBEILQ027S"', output)
         self.assertIn('"http_status": 403', output)
-        self.assertIn('"stage": "fetch_csv"', output)
+        self.assertIn('"stage": "fetch_api"', output)
         self.assertIn('"elapsed_ms":', output)
         self.assertNotIn('private-secret', output)
         self.assertEqual(result['status'], 'unavailable')
@@ -119,8 +130,8 @@ class MarketIndicatorTests(unittest.TestCase):
     def test_fred_gdp_network_failure_has_safe_reason_type(self):
         for reason in (TimeoutError('private-secret'), socket.gaierror(-2, 'private-secret'), ssl.SSLError('private-secret')):
             m._CACHE.clear()
-            with patch.object(m, 'read_public', side_effect=[
-                'observation_date,NCBEILQ027S\n2025-01-01,50000000\n', URLError(reason)
+            with patch.object(m, 'read_fred', side_effect=[
+                {'observations': [{'date': '2025-01-01', 'value': '50000000'}]}, URLError(reason)
             ]), self.assertLogs(m._LOGGER, level='WARNING') as logs:
                 m.indicator('buffett')
             output = '\n'.join(logs.output)
@@ -129,13 +140,53 @@ class MarketIndicatorTests(unittest.TestCase):
             self.assertNotIn('private-secret', output)
 
     def test_fred_parse_and_empty_data_have_distinct_stages(self):
-        for raw, stage in [('<html>private-secret</html>', 'csv_columns'),
-                           ('observation_date,GDP\n2025-01-01,.\n', 'valid_observations')]:
-            with patch.object(m, 'read_public', return_value=raw), self.assertLogs(m._LOGGER, level='WARNING') as logs:
+        for raw, stage in [({'error_message': 'private-secret'}, 'api_observations'),
+                           ({'observations': [{'date': '2025-01-01', 'value': '.'}]}, 'valid_observations')]:
+            with patch.object(m, 'read_fred', return_value=raw), self.assertLogs(m._LOGGER, level='WARNING') as logs:
                 with self.assertRaises(ValueError):
                     m.quarterly('GDP')
             self.assertIn(f'"stage": "{stage}"', '\n'.join(logs.output))
             self.assertNotIn('private-secret', '\n'.join(logs.output))
+
+    def test_fred_missing_key_does_not_connect(self):
+        with patch.object(m, 'fred_key', return_value=''), patch.object(m, 'build_opener') as opener:
+            result = m.indicator('buffett')
+        self.assertIn('FRED API 키 미설정', result['message'])
+        opener.assert_not_called()
+
+    def test_fred_environment_overrides_dotenv(self):
+        with patch.object(m, 'dotenv_values', return_value={'FRED_API_KEY': 'file-key'}), patch.dict(m.os.environ, {'FRED_API_KEY': ' environment-key '}):
+            self.assertEqual(m.fred_key(), 'environment-key')
+
+    def test_fred_transport_stages_and_secret_redaction(self):
+        opener = MagicMock()
+        cases = [
+            ('api_connect_headers', HTTPError('https://example.com/?api_key=private-secret', 403, 'private-secret', {}, None)),
+            ('api_read_body', TimeoutError('private-secret')),
+            ('api_json', b'{private-secret'),
+        ]
+        for stage, failure in cases:
+            m._CACHE.clear()
+            opener.reset_mock(side_effect=True)
+            opener.open.side_effect = failure if stage == 'api_connect_headers' else None
+            reader = opener.open.return_value.__enter__.return_value.read
+            reader.side_effect = failure if stage == 'api_read_body' else None
+            reader.return_value = failure if stage == 'api_json' else b'{}'
+            with patch.object(m, 'fred_key', return_value='private-secret'), patch.object(m, 'build_opener', return_value=opener), self.assertLogs(m._LOGGER, level='WARNING') as logs:
+                result = m.indicator('buffett')
+            output = '\n'.join(logs.output)
+            self.assertIn(f'"stage": "{stage}"', output)
+            self.assertNotIn('private-secret', output + json.dumps(result))
+            self.assertEqual(result['status'], 'unavailable')
+
+    def test_fred_redirect_and_oversized_response_rejected(self):
+        with self.assertRaises(m.IndicatorError):
+            m.FredNoRedirect().redirect_request(None, None, 302, '', {}, 'https://example.com')
+        opener = MagicMock()
+        opener.open.return_value.__enter__.return_value.read.return_value = b'x' * 2_000_001
+        with patch.object(m, 'fred_key', return_value='test-secret'), patch.object(m, 'build_opener', return_value=opener):
+            with self.assertRaises(ValueError):
+                m.read_fred('GDP')
 
     def test_no_common_period_logs_and_failure_cache_does_not_repeat(self):
         with patch.object(m, 'quarterly', side_effect=[{(2024, 1): 1}, {(2025, 1): 1}]), self.assertLogs(m._LOGGER, level='WARNING') as logs:

@@ -150,6 +150,19 @@ label and its original observation date, never a fabricated zero.
   quarter. The numerator is nonfinancial corporate equity value in millions of
   USD, not total listed market capitalization; GDP is billions of USD at an
   annual rate. The visible proxy label and formula disclosure are intentional.
+  Set `FRED_API_KEY` in local `.env` or Render Environment (environment takes
+  precedence). Obtain an application key through
+  https://fred.stlouisfed.org/docs/api/api_key.html and review its usage terms.
+  The server uses `https://api.stlouisfed.org/fred/series/observations` with JSON,
+  descending dates and the latest 40 observations per series. There is no CSV
+  fallback. Missing keys are reported explicitly without making a request.
+  FRED requires the key in the server-side query string; request URLs, response
+  bodies and raw exceptions are never logged or returned to the browser.
+  Redirects are rejected. Failure stages distinguish `api_configuration`,
+  `api_connect_headers`, `api_read_body`, `api_json`, and `valid_observations`.
+  Connection/header timeouts alone do not prove an IP block. Restart/redeploy
+  after configuring the key to clear any five-minute cached failure. The API
+  route still needs connectivity verification from the deployed environment.
 - CNN stock Fear & Greed: OANOR `/stockfeargreed-api/v1/index` gateway.
   Set `OANOR_API_KEY` in local `.env` (environment variables take precedence).
   Subscribe to the corresponding API plan in OANOR; a key alone may not suffice.

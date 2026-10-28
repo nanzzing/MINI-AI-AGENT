@@ -29,7 +29,7 @@ class ValuationTests(unittest.TestCase):
         result = self.fetch(self.info)
         self.assertEqual(result['status'], 'partial')
         self.assertEqual(result['metrics']['roe']['value'], 15)
-        self.assertEqual(result['metrics']['fcf_yield']['value'], -10)
+        self.assertIsNone(result['metrics']['fcf_yield']['value'])
         self.assertIsNone(result['as_of'])
         self.assertTrue(result['price_as_of'])
         self.assertIn('미확인', result['metrics']['forward_pe']['period'])
@@ -61,6 +61,20 @@ class ValuationTests(unittest.TestCase):
         with patch('mini_ai_agent.valuation.yf.Ticker', side_effect=RuntimeError('private error')):
             self.assertEqual(valuation_comparison(self.stock)['status'], 'unavailable')
         self.assertEqual(self.fetch(self.info)['status'], 'partial')
+
+    def test_both_markets_never_fall_back_to_calculators(self):
+        with patch('mini_ai_agent.korean_valuation.calculate') as kr, patch('mini_ai_agent.us_valuation.calculate') as us, patch('mini_ai_agent.valuation.yf.Ticker') as factory:
+            for stock in (self.stock, {'code': '005930', 'exchange': 'KOSPI'}):
+                factory.return_value.get_info.return_value = self.info
+                result = valuation_comparison(stock)
+                self.assertEqual(result['source'], 'Yahoo Finance')
+                self.assertEqual(result['metrics']['trailing_pe']['value'], 20)
+                _CACHE.clear()
+                factory.return_value.get_info.side_effect = RuntimeError('blocked')
+                self.assertEqual(valuation_comparison(stock)['status'], 'unavailable')
+                factory.return_value.get_info.side_effect = None
+            kr.assert_not_called()
+            us.assert_not_called()
 
     def test_only_long_can_offer_execute_or_reuse(self):
         conversation = OpenAIConversation()

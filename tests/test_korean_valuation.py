@@ -141,7 +141,8 @@ class KoreanValuationTests(unittest.TestCase):
              patch('mini_ai_agent.korean_valuation.dart.share_counts', return_value=self.shares), \
              patch('mini_ai_agent.korean_valuation.close_price', side_effect=RuntimeError), \
              patch('mini_ai_agent.valuation.yf.Ticker') as ticker:
-            result = valuation_comparison(STOCK)
+            from mini_ai_agent.korean_valuation import calculate
+            result = calculate(STOCK)
             ticker.assert_not_called()
         self.assertAlmostEqual(result['metrics']['roe']['value'], 14)
         self.assertIsNone(result['metrics']['trailing_pe']['value'])
@@ -177,10 +178,11 @@ class KoreanValuationTests(unittest.TestCase):
     def test_korean_route_and_cache(self):
         with patch('mini_ai_agent.korean_valuation.calculate', return_value={'status': 'partial', 'metrics': {}}) as calc, \
              patch('mini_ai_agent.valuation.yf.Ticker') as ticker:
+            ticker.return_value.get_info.return_value = {'trailingPE': 20}
             valuation_comparison(STOCK)
             valuation_comparison(STOCK)
-            calc.assert_called_once_with(STOCK)
-            ticker.assert_not_called()
+            calc.assert_not_called()
+            ticker.assert_called_once()
 
     def test_unknown_preferred_mapping_is_not_guessed(self):
         with self.assertRaises(ValueError):

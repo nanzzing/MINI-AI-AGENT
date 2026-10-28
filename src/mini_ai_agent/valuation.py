@@ -18,11 +18,12 @@ def number(value):
 
 
 def valuation_comparison(stock):
-    """한국은 DART 기반 계산, 미국은 공급자 배수. 가격 조정 기준을 혼용하지 않는다."""
-    if stock['exchange'] in {'KOSPI', 'KOSDAQ', 'KONEX'}:
-        from mini_ai_agent.korean_valuation import calculate
-        return cached(('valuation', 'dart-calculated-ttm-v3', stock['exchange'], stock['code']),
-                      300, lambda: calculate(stock))
+    """한국·미국 모두 공급자 배수를 사용한다. DART/SEC 재무 조회는 별개다."""
+    return yahoo_valuation_snapshot(stock)
+
+
+def yahoo_valuation_snapshot(stock):
+    """공급자 원본 지표만 사용하며 누락값을 공시 자료로 재계산하지 않는다."""
 
     def fetch():
         symbol = yahoo_symbol(stock)
@@ -32,7 +33,7 @@ def valuation_comparison(stock):
                 raise ValueError
         except Exception:
             return meta('Yahoo Finance', 'unavailable', metrics={},
-                        message='기업 가치평가 자료 조회에 실패했습니다.')
+                        message='Yahoo 가치평가 조회 실패. 접근 제한·인증 또는 네트워크 문제일 수 있습니다. DART/SEC 재무 조회와는 별개이며 직접 계산으로 대체하지 않습니다.')
         metrics = {}
 
         def metric(key, field, period, unit='배', positive=True, denominator=None):
@@ -50,16 +51,10 @@ def valuation_comparison(stock):
         if metrics['roe']['value'] is not None:
             metrics['roe']['value'] *= 100
         metric('ev_to_ebitda', 'enterpriseToEbitda', '공급자 EBITDA; 정확한 집계기간 미확인', denominator='ebitda')
-        # 통화가 다른 시가총액과 FCF를 나누지 않는다. 환율을 임의로 적용하지 않는다.
-        fcf, cap = number(info.get('freeCashflow')), number(info.get('marketCap'))
-        comparable = bool(info.get('currency') and info.get('currency') == info.get('financialCurrency'))
-        usable = comparable and fcf is not None and cap is not None and cap > 0
+        # 이 응답에는 FCF 수익률 완성값이 없으므로 직접 나눠서 만들지 않는다.
         metrics['fcf_yield'] = {
-            'value': fcf / cap * 100 if usable else None, 'status': 'ok' if usable else 'unavailable',
-            'unit': '%', 'period': '공급자 FCF; 정확한 집계기간 미확인',
-            'method': 'Yahoo freeCashflow / marketCap * 100',
-            'inputs': {'free_cash_flow': fcf, 'market_cap': cap},
-            'reason': '' if usable else 'FCF·양의 시가총액·동일 통화 확인 필요',
+            'value': None, 'status': 'unavailable', 'unit': '%', 'period': '',
+            'reason': '공급자가 계산한 FCF 수익률 미제공. 직접 계산하지 않습니다.',
         }
         timestamp = number(info.get('regularMarketTime'))
         try:
@@ -78,6 +73,7 @@ def valuation_comparison(stock):
                     missing=missing + ['industry_benchmark', 'historical_valuation'],
                     limitations=['조회 시각은 재무·예상치 기준일이 아닙니다. price_as_of는 주가 시각만 나타냅니다.',
                                  '선행 PER의 예상 기간을 확인하기 전에는 실적 PER·다른 공급자 배수와 직접 비교하지 마세요.',
-                                 'FCF 수익률과 EV/EBITDA는 공급자 정의를 따르며 업종 적합성과 설비투자 부담을 함께 검토하세요.',
+                                 'PER·PBR·ROE·EV/EBITDA는 Yahoo 제공 값입니다. DART/SEC 실적으로 직접 계산하거나 혼합하지 않습니다.',
+                                 'FCF 수익률은 공급자 완성값 미제공으로 계산하지 않습니다.',
                                  '과거 배수·동종기업 평균·역산 성장 기대·ROIC는 제공하지 않습니다.'])
-    return cached(('valuation', stock['exchange'], stock['code']), 300, fetch)
+    return cached(('valuation', 'yahoo-provider-v2', stock['exchange'], stock['code']), 300, fetch)

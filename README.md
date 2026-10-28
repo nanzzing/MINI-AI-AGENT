@@ -93,42 +93,17 @@ lookup; missing provider fields do not cause repeated requests. Results are cach
 by stock and exchange for five minutes and removed from model context when moving
 to short/medium research. The eval fixture replaces this provider too.
 
-For US stocks, `valuation.py` reads Yahoo Finance company trailing/forward P/E, P/B, ROE and
-EV/EBITDA when supplied. FCF yield uses provider free cash flow / market cap only
-when both currencies match. Missing/non-finite values are not zero; nonpositive
-valuation multiples are unavailable, while negative ROE/FCF remain valid data.
-Provider periods are explicitly marked unknown where unverified. Quote time is
-not the earnings/estimate date. No adjusted chart prices are used for these ratios.
+For both Korean and US stocks, `valuation.py` reads Yahoo Finance trailing/forward
+P/E, P/B, ROE and EV/EBITDA. Missing values are not recomputed from DART/SEC or
+replaced by old conversation values. Negative ROE is retained; nonpositive
+valuation multiples remain unavailable. Provider periods may be unknown, and
+quote time is not the earnings/estimate date. FCF yield is unavailable because
+this response does not supply a finished FCF-yield metric.
 
-For Korean stocks, `korean_valuation.py` calculates TTM earnings P/E, latest
-book-value P/B and TTM ROE from OpenDART. It never calls Yahoo `get_info`.
-P/E sums parent-attributable profit for the latest four consecutive standalone
-quarters, anchored at the latest reported quarter. Missing/duplicate quarters,
-mixed currencies/scopes or missing parent profit block P/E; it never substitutes
-older quarters or annual earnings. Q4 is already derived by the DART adapter
-as annual minus nine-month cumulative income, and is not differenced again. ROE
-uses the same TTM profit divided by average parent equity at the latest quarter
-end and exactly one year earlier. Missing, duplicate or mixed-basis equity blocks
-ROE; annual equity can only fill an exact December-end match. Annual financial
-history remains available separately for long-term trend analysis. Separate
-statements use separate net income/equity; CFS/OFS are never mixed. Nonpositive
-profit blocks P/E, nonpositive equity blocks P/B/ROE, but negative ROE is valid.
-
-P/E and P/B are **whole-company estimates**, not common-share EPS/BPS multiples:
-sum each share class's recent dividend-unadjusted closing price times its DART
-report-date outstanding shares (excluding treasury stock). Share counts are not
-live: later issuance, retirement and treasury changes are unverified. Price dates
-must match across classes; splits/mergers after the share-count date block these
-estimates. Prices still come from Yahoo's chart API, so price access can fail
-independently while DART-only ROE remains available.
-
-`data/kr_share_classes.json` contains verified multi-class ticker mappings with
-an issuer source URL (initially Samsung common/preferred). Other issuers with only
-ordinary shares need no extra mapping. Unmapped preferred/multiple classes are
-not priced as ordinary shares: add an independently verified mapping before use.
-Numbers are fetched, never hardcoded. Forward P/E, EV/EBITDA and FCF yield are
-currently unavailable on this Korean path rather than falling back to Yahoo
-financial estimates. Formula, inputs, periods and filing links accompany metrics.
+DART (Korea) and SEC (US) remain the financial-statement sources. The standalone
+`korean_valuation.py` and `us_valuation.py` calculators remain for study/tests but
+are no longer used by the analysis tool. Yahoo access failures, including those
+on Render, remain possible and are reported without a calculation fallback.
 
 Industry averages (including forward P/E), peer comparisons and historical
 valuation ranges are **not connected yet**. The tool returns explicit unavailable
@@ -323,6 +298,29 @@ Refresh replaces the local snapshot only after all six downloads and validation
 succeed. No API key is needed for these public master files.
 Keep actual API keys in a local `.env` file, never in source code.
 
+## US Financials: SEC EDGAR
+
+US financial statements now use SEC Company Facts (standard US-GAAP, USD).
+Set `SEC_USER_AGENT=MiniAIResearch your-real-contact-email` in local `.env` or
+Render Environment. No SEC API key is needed. Do not use a placeholder email.
+Restart/redeploy after setting it. Requests run on the backend with a 20-second
+timeout, a process-wide maximum of five request starts per second, a daily ticker
+directory cache and an hourly company-facts cache. Across multiple workers,
+keep the aggregate rate below SEC's limit. Failures log `sec_failure` without
+contact details or response bodies. No silent Yahoo financial fallback is used.
+
+Short/medium/long retain the existing 4-quarter / 3-year+8-quarter /
+5-year+8-quarter policies. Period start/end and source filing links accompany
+values. Cumulative cash flows and Q4 amounts require compatible earlier periods;
+EPS is never derived by subtracting cumulative EPS. Custom tags, non-USD,
+IFRS/foreign issuers and business-segment data are not supported in this adapter.
+Missing values remain missing, not zero. Filing revisions across periods may
+still have inconsistent restatement bases and require original-filing review.
+
+Long-term valuation multiples are supplied by Yahoo for both markets, separately
+from SEC financial statements. The application does not recompute missing ratios.
+See the valuation section above for provider limitations.
+
 ## API Model Selection
 
 In API mode (including Render), the composer offers an API model selector. The
@@ -386,10 +384,10 @@ does not guarantee prices or financials exist for the instrument.
 
 ## Korean Financials: OpenDART
 
-KOSPI/KOSDAQ/KONEX financial statements now use OpenDART. US financials remain
-on Yahoo. Prices/charts remain on Yahoo. Korean long-term valuation now calculates
-P/E, P/B and ROE from DART and prices as described above; forward PER and industry
-benchmarks remain unavailable.
+KOSPI/KOSDAQ/KONEX financial statements now use OpenDART. US financials use
+SEC EDGAR as described above. Prices/charts and provider valuation multiples
+come from Yahoo. DART financial statements are not used to recompute missing
+PER/PBR/ROE; industry benchmarks remain unavailable.
 
 Put your issued key in the project-root `.env` for local use:
 

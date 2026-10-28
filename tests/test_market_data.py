@@ -49,21 +49,14 @@ class MarketTests(unittest.TestCase):
         rows = market.statement_rows(frame, 4)
         self.assertEqual(rows[0]["values"], {"Total Revenue": 0.0})
 
-    @patch.object(market.yf, "Ticker")
-    def test_financial_periods_and_partial_coverage(self, ticker):
-        # 요청은 4분기인데 공급자는 1기간만 반환하는 상황을 만들어 partial 처리를 검증한다.
-        instance = ticker.return_value
-        instance.get_info.return_value = {"financialCurrency": "KRW"}
-        frame = pd.DataFrame({pd.Timestamp("2025-12-31"): [123]}, index=["Total Revenue"])
-        for name in ("get_income_stmt", "get_balance_sheet", "get_cashflow"):
-            getattr(instance, name).return_value = frame
-        result = market.financials({"name": "Apple", "code": "AAPL", "exchange": "NASDAQ"}, "단기")
-        self.assertEqual(result["status"], "partial")
-        self.assertNotIn("yearly", result["statements"])
-        instance.get_income_stmt.assert_called_once_with(freq="quarterly", pretty=True)
-        summary = market.financial_summary(result)
-        self.assertEqual(summary["statements"]["quarterly"]["income"][0]["values"]["Total Revenue"], 123)
-        self.assertEqual(len(result["missing"]), 3)
+    def test_us_financials_route_to_sec_without_yahoo_fallback(self):
+        stock = {"name": "Apple", "code": "AAPL", "exchange": "NASDAQ"}
+        with patch.object(market.sec, 'financials', return_value={'source': 'SEC EDGAR', 'status': 'unavailable'}) as fetch, patch.object(market.yf, 'Ticker') as ticker:
+            for horizon in ('단기', '중기', '장기'):
+                result = market.financials(stock, horizon)
+                self.assertEqual(result['source'], 'SEC EDGAR')
+                fetch.assert_called_with(stock, market.policy(horizon))
+            ticker.assert_not_called()
 
     def test_korean_financials_use_dart_and_never_yahoo(self):
         with patch.object(market.dart, 'financials', return_value={'source': 'OpenDART', 'status': 'unavailable'}) as fetch, patch.object(market.yf, 'Ticker') as ticker:

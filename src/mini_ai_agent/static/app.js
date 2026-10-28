@@ -51,7 +51,7 @@ async function refreshStatus() {
     renderApiModels(data);
     window.chatgptAuth?.render(data);
     $(".data-note").textContent =
-      "가격 Yahoo Finance · 한국 재무 OpenDART · 미국 재무 Yahoo Finance · 뉴스 Google News";
+      "가격 Yahoo Finance · 한국 재무 OpenDART · 미국 재무 SEC EDGAR · 뉴스 Google News";
   } catch {
     $(".connection").textContent = "서버 연결 확인 필요";
   }

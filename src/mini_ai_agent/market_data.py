@@ -12,7 +12,7 @@ import xml.etree.ElementTree as ET
 
 import yfinance as yf
 
-from mini_ai_agent import dart
+from mini_ai_agent import dart, sec
 from mini_ai_agent.stocks import load_catalog, known_stocks
 from mini_ai_agent.technicals import analyze
 
@@ -201,36 +201,8 @@ def financials(stock, horizon):
         return cached(('financials', 'OpenDART', stock['exchange'], stock['code'], horizon),
                       3600, lambda: dart.financials(stock, rules))
 
-    def fetch():
-        try:
-            ticker = yf.Ticker(yahoo_symbol(stock))
-            try:
-                currency = ticker.get_info().get("financialCurrency")
-            except Exception:
-                currency = None
-            statements, missing = {}, []
-            for frequency, count in (("yearly", rules["annual_years"]), ("quarterly", rules["quarters"])):
-                # 단기는 annual_years=0이므로 연간 조회를 건너뛰고 4분기만 요청한다.
-                if not count:
-                    continue
-                statements[frequency] = {}
-                for name, method in (("income", ticker.get_income_stmt), ("balance", ticker.get_balance_sheet), ("cashflow", ticker.get_cashflow)):
-                    try:
-                        rows = statement_rows(method(freq=frequency, pretty=True), count)
-                    except Exception:
-                        rows = []
-                    statements[frequency][name] = rows
-                    if len(rows) < count:
-                        missing.append(f"{frequency}/{name}: 요청 {count}기간, 제공 {len(rows)}기간")
-            available = any(rows for section in statements.values() for rows in section.values())
-            return meta("Yahoo Finance", "partial" if missing and available else "ok" if available else "unavailable",
-                        statements=statements, currency=currency, missing=missing,
-                        requested={"annual_years": rules["annual_years"], "quarters": rules["quarters"]},
-                        note="재무 원문을 정규화한 제공 자료. 제공 범위가 요청 기간보다 짧을 수 있으며 금액은 원단위, 비율·주식수·EPS는 해당 항목 단위.")
-        except Exception:
-            return meta("Yahoo Finance", "unavailable", statements={}, missing=["재무 자료 조회 실패"])
-
-    return cached(("financials", stock["exchange"], stock["code"], horizon), 3600, fetch)
+    return cached(('financials', 'SEC EDGAR', stock['exchange'], stock['code'], horizon),
+                  3600, lambda: sec.financials(stock, rules))
 
 
 def research_bundle(stock, horizon):
@@ -249,7 +221,7 @@ def research_bundle(stock, horizon):
 
 def financial_summary(result):
     """전체 재무제표는 보관하고 모델에는 주요 항목만 보내 문맥 크기를 제한한다."""
-    fields = {"Total Revenue", "Operating Income", "Net Income", "Net Income Attributable To Parent", "Basic EPS", "Diluted EPS", "Total Assets", "Total Debt", "Total Liabilities", "Total Equity",
+    fields = {"Total Revenue", "Operating Income", "Net Income", "Common Net Income", "Net Income Attributable To Parent", "Basic EPS", "Diluted EPS", "Total Assets", "Total Debt", "Total Liabilities", "Total Equity",
               "Stockholders Equity", "Cash And Cash Equivalents", "Operating Cash Flow", "Free Cash Flow",
               "Capital Expenditure", "Ordinary Shares Number"}
     summary = deepcopy(result)

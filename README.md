@@ -323,6 +323,24 @@ Refresh replaces the local snapshot only after all six downloads and validation
 succeed. No API key is needed for these public master files.
 Keep actual API keys in a local `.env` file, never in source code.
 
+## API Model Selection
+
+In API mode (including Render), the composer offers an API model selector. The
+default stays `OPENAI_MODEL`; without an explicit allowlist, the configured default
+plus `gpt-4.1-mini`, `gpt-5.4-mini`, `gpt-5.4`, `gpt-6-luna`, `gpt-6-sol`,
+`gpt-6.1-sol` and `gpt-6-astra` are offered. Set
+`OPENAI_ALLOWED_MODELS=gpt-4.1-mini,gpt-5.4-mini` to restrict public choices.
+An explicit allowlist excludes other models, even `OPENAI_MODEL`; its first entry
+then becomes the default. Empty configuration falls back to `OPENAI_MODEL` alone.
+Selection applies on the next message, is validated on the server and belongs to
+the conversation's session cookie. Switching models preserves dialogue and data;
+it does not change other sessions or environment variables. Server restarts discard
+session selection. ChatGPT subscription mode retains its separate model selector.
+All API choices use the operator's API key and billing. The allowlist is not proof
+of account access: unsupported models return an error, without silent substitution.
+Model-selection tests mock paid requests; actual model availability/quality needs
+separate evaluation. `tests/browser_api_models.cjs` uses port 8767 by default.
+
 ## Automatic Question Mode
 
 The composer defaults to automatic mode, separate from the last stock's investment

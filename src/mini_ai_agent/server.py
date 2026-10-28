@@ -15,7 +15,7 @@ from threading import Lock
 from urllib.parse import urlparse, parse_qs
 
 from mini_ai_agent.conversation import RESEARCH_FOCUS
-from mini_ai_agent.llm import OpenAIConversation, ChatError, configuration_status
+from mini_ai_agent.llm import OpenAIConversation, ChatError, configuration_status, api_model_options
 from mini_ai_agent.stocks import find_stocks, search_stocks
 from mini_ai_agent.discovery import discover
 from mini_ai_agent.market_data import stock_identity, price_history, financials, policy
@@ -235,6 +235,15 @@ class Handler(BaseHTTPRequestHandler):
             # configured=True는 문자열 설정 존재 여부이지 OpenAI 인증 성공 여부가 아니다.
             try:
                 status = self.chatgpt.status() if self.chatgpt is not None else {**configuration_status(), 'provider': 'api'}
+                if self.chatgpt is None:
+                    cookies = SimpleCookie()
+                    cookies.load(self.headers.get('Cookie', ''))
+                    cookie = cookies.get('session')
+                    with LOCK:
+                        conversation = SESSIONS.get(cookie.value) if cookie else None
+                    selected = getattr(conversation, 'api_model', None)
+                    if selected in {row['id'] for row in status['api_models']}:
+                        status['model'] = selected
                 self.send_json(200, {**status, "research_focus": RESEARCH_FOCUS,
                                      'csrf': self.server.csrf if self.chatgpt is not None else None})
             except (ValueError, OSError, TimeoutError):
@@ -285,6 +294,10 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError
             data = json.loads(self.rfile.read(length))
             message = data.get("message")
+            api_model = data.get('api_model')
+            if api_model is not None and (self.chatgpt is not None or not isinstance(api_model, str) or api_model not in {row['id'] for row in api_model_options()[1]}):
+                self.send_json(400, {'error': '허용되지 않은 API 모델입니다. 모델 목록을 새로고침해 주세요.'})
+                return
             selection = data.get('selection', '자동')
             if selection not in ('자동', '단기', '중기', '장기'):
                 raise ValueError
@@ -311,12 +324,13 @@ class Handler(BaseHTTPRequestHandler):
             conversation = SESSIONS[token]
         streaming = 'application/x-ndjson' in self.headers.get('Accept', '').split(',')
         try:
+            model_args = {'api_model': api_model} if api_model is not None else {}
             if streaming:
                 self.start_chat_stream(token)
-                reply = conversation.respond(message, selection=selection, on_progress=lambda step:
+                reply = conversation.respond(message, selection=selection, **model_args, on_progress=lambda step:
                                              self.send_chat_event({'type': 'progress', 'step': step}))
             else:
-                reply = conversation.respond(message, selection=selection)
+                reply = conversation.respond(message, selection=selection, **model_args)
             # respond가 성공한 상태만 읽는다. 문자열 답변과 별도로 구조화된 자료를 보내야
             # 브라우저가 체크리스트, 재무표, 도구 내역을 텍스트에서 재추출하지 않아도 된다.
             # 답변 외에 종목·기간·도구 실행 내역을 함께 보내 화면 상태도 맞춘다.
@@ -332,6 +346,8 @@ class Handler(BaseHTTPRequestHandler):
                       "research": conversation.research,
                       "focus": list(RESEARCH_FOCUS[state.horizon]) if state.horizon else []}
             result["coverage"] = conversation.coverage
+            if self.chatgpt is None:
+                result['model'] = getattr(conversation, 'api_model', None)
             if conversation.research.get('response_mode', 'research') != 'research':
                 result['focus'] = [row['criterion'] for row in conversation.coverage]
                 result['horizon'] = None

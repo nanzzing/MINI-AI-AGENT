@@ -210,6 +210,10 @@
             </div>
             <!-- 관점 버튼/입력 폼은 app.js의 send()로 들어간다. 기본 form 페이지 이동은 막는다. -->
             <div class="composer-area">
+              <div id="api-model-controls" class="api-model-controls" hidden>
+                <label for="api-model">API 모델</label>
+                <select id="api-model" aria-label="API 모델" title="모델별 API 비용이 다릅니다. 운영자의 API 키로 요청합니다."></select>
+              </div>
               <div class="horizon-picker" role="group" aria-label="투자 관점">
                 <button data-horizon="자동" aria-pressed="true">자동</button>
                 <button data-horizon="단기" aria-pressed="false">단기</button

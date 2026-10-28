@@ -31,6 +31,40 @@ def queries(short=False, long=True):
 
 
 class LLMTests(unittest.TestCase):
+    def test_gpt6_choices_reach_responses_api(self):
+        models = ['gpt-6-luna', 'gpt-6-sol', 'gpt-6.1-sol', 'gpt-6-astra']
+        client = self.make_client([[answer('테스트 답변')] for _ in models])
+        session = OpenAIConversation(client)
+        with patch('mini_ai_agent.llm.dotenv_values', return_value={}), patch.dict('os.environ', {}, clear=True):
+            for model in models:
+                session.respond('안녕', api_model=model)
+        self.assertEqual([req['model'] for req in self.requests], models)
+        self.assertEqual(len(session.dialogue), len(models))
+
+    def test_api_model_switch_preserves_conversation(self):
+        choices = ('gpt-4.1-mini', [{'id': 'gpt-4.1-mini'}, {'id': 'gpt-5.4-mini'}, {'id': 'gpt-5.4'}])
+        client = self.make_client([[answer('첫 번째 답변')], [answer('두 번째 답변')]])
+        session = OpenAIConversation(client)
+        with patch('mini_ai_agent.llm.api_model_options', return_value=choices):
+            session.respond('안녕', api_model='gpt-5.4-mini')
+            session.respond('이어서 설명해줘', api_model='gpt-5.4')
+        self.assertEqual([req['model'] for req in self.requests], ['gpt-5.4-mini', 'gpt-5.4'])
+        self.assertIn('첫 번째 답변', self.requests[1]['instructions'])
+        self.assertEqual(len(session.dialogue), 2)
+        self.assertEqual(session.api_model, 'gpt-5.4')
+        self.assertIsNone(OpenAIConversation(client).api_model)
+
+    def test_api_model_rejected_before_request(self):
+        client = self.make_client([])
+        session = OpenAIConversation(client)
+        with self.assertRaises(ChatError):
+            session.respond('안녕', api_model='not-allowed-model')
+        self.assertEqual(self.requests, [])
+        self.assertIsNone(session.api_model)
+        session.chatgpt = object()
+        with self.assertRaises(ChatError):
+            session.respond('안녕', api_model='gpt-4.1-mini')
+
     def test_industry_question_ignores_previous_short_checklist(self):
         from mini_ai_agent.conversation import Horizon
         client = self.make_client([

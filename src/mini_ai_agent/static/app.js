@@ -10,6 +10,30 @@ let selectedHorizon = null;
 let analysisSelection = "자동";
 let researchFocus = {};
 let currentCoverage = [];
+let apiModel = null;
+let apiModelEdited = false;
+
+function renderApiModels(data) {
+  const root = $("#api-model-controls"), select = $("#api-model");
+  root.hidden = data.provider === "chatgpt" || !data.api_models?.length;
+  if (root.hidden) { apiModel = null; apiModelEdited = false; return; }
+  const allowed = data.api_models.map(model => model.id);
+  if (!apiModelEdited || !allowed.includes(apiModel)) apiModel = data.model;
+  if (!allowed.includes(apiModel)) apiModel = allowed[0];
+  select.replaceChildren(...data.api_models.map(model => {
+    const option = document.createElement("option");
+    option.value = model.id;
+    option.textContent = model.label;
+    option.selected = model.id === apiModel;
+    return option;
+  }));
+  select.disabled = busy;
+}
+
+$("#api-model").addEventListener("change", event => {
+  apiModel = event.target.value;
+  apiModelEdited = true;
+});
 // selectedHorizon은 마지막 분석의 기간, analysisSelection은 사용자가 선택한 입력 모드다.
 // 자동에서 장기 질문을 해도 입력 모드를 장기로 고정하지 않는다.
 // researchFocus는 /api/status로 받은 Python 기준표, currentCoverage는 최신 답변의 근거 선언이다.
@@ -24,6 +48,7 @@ async function refreshStatus() {
     const data = await response.json();
     researchFocus = data.research_focus || researchFocus;
     showConnection(data);
+    renderApiModels(data);
     window.chatgptAuth?.render(data);
     $(".data-note").textContent =
       "가격 Yahoo Finance · 한국 재무 OpenDART · 미국 재무 Yahoo Finance · 뉴스 Google News";
@@ -420,6 +445,7 @@ async function send(message, reset = false) {
   await statusReady;
   if (busy) return;
   busy = true;
+  $("#api-model").disabled = true;
   window.chatgptAuth?.setChatBusy(true);
   document
     .querySelectorAll("button")
@@ -457,7 +483,7 @@ async function send(message, reset = false) {
       // 않아도 Python 세션이 history를 가지고 있어서 후속 질문을 이어갈 수 있다.
       method: "POST",
       headers: { "Content-Type": "application/json", "Accept": "application/x-ndjson", ...window.chatgptAuth?.headers() },
-      body: JSON.stringify({ message, selection: analysisSelection }),
+      body: JSON.stringify({ message, selection: analysisSelection, ...(apiModel ? {api_model: apiModel} : {}) }),
     });
     const data = await readChatResponse(response, step => pending.progress(step));
     const elapsedSeconds = pending.finish();
@@ -466,7 +492,7 @@ async function send(message, reset = false) {
     if (!reset) {
       const duration = document.createElement("span");
       duration.className = "message-duration";
-      duration.textContent = `${elapsedSeconds}초 소요`;
+      duration.textContent = `${elapsedSeconds}초 소요${data.model ? ` · ${data.model}` : ""}`;
       reply.querySelector(".message-label").append(duration);
     }
     if (!reset) renderAgentSteps(reply, data.agent_steps);
@@ -484,6 +510,7 @@ async function send(message, reset = false) {
   } finally {
     pending.finish();
     busy = false;
+    $("#api-model").disabled = false;
     document
       .querySelectorAll("button")
       .forEach((button) => (button.disabled = false));

@@ -56,10 +56,34 @@ def settings() -> tuple[str, str]:
     return key.strip(), model.strip()
 
 
+def api_model_options(default=None):
+    """운영자가 허용한 API 모델만 공개한다. 계정별 실제 사용 권한 조회는 아니다."""
+    default = default or settings()[1]
+    labels = {
+        'gpt-4.1-mini': 'GPT-4.1 mini',
+        'gpt-5.4-mini': 'GPT-5.4 mini',
+        'gpt-5.4': 'GPT-5.4',
+        'gpt-6-luna': 'GPT-6 Luna',
+        'gpt-6-sol': 'GPT-6 Sol',
+        'gpt-6.1-sol': 'GPT-6.1 Sol',
+        'gpt-6-astra': 'GPT-6 Astra',
+    }
+    values = dotenv_values(ROOT / '.env')
+    configured = os.environ.get('OPENAI_ALLOWED_MODELS', values.get('OPENAI_ALLOWED_MODELS'))
+    candidates = configured.split(',') if configured is not None else [default, *labels]
+    models = list(dict.fromkeys(value.strip() for value in candidates
+                               if re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._:-]{0,127}', value.strip())))[:20]
+    if not models:
+        models = [default]
+    selected = default if default in models else models[0]
+    return selected, [{'id': model, 'label': labels.get(model, model)} for model in models]
+
+
 def configuration_status() -> dict:
     # 화면에는 키 자체를 보내지 않는다. configured는 키 유효성 검증 결과가 아니다.
     key, model = settings()
-    return {"configured": bool(key and key != "aaa"), "model": model}
+    model, models = api_model_options(model)
+    return {"configured": bool(key and key != "aaa"), "model": model, 'api_models': models}
 
 
 # 모델에게 보내는 도구 설명서다. 함수 구현이나 전체 종목 목록은 여기에 포함하지 않는다.
@@ -120,6 +144,7 @@ class OpenAIConversation:
         # coverage: 같은 모델 응답에서 선언한 자료 사용 관계. 서로 다른 목적의 저장소다.
         # 테스트에서는 가짜 응답을 주는 클라이언트를 주입해 실제 API 비용을 피한다.
         self.client = client
+        self.api_model = None  # 이 대화의 API 모델. 다른 사용자나 환경변수는 변경하지 않는다.
         self.chatgpt = chatgpt  # 로컬 구독 연결. None이면 기존 API 키 경로다.
         self.lock = Lock()
 
@@ -412,7 +437,7 @@ class OpenAIConversation:
             names.update(self.required_tools(state))
         return [tool for tool in TOOLS if tool["name"] in names]
 
-    def respond(self, message: str, on_progress=None, *, selection="자동") -> str:
+    def respond(self, message: str, on_progress=None, *, selection="자동", api_model=None) -> str:
         """한 사용자 메시지를 처리하며 필요한 만큼 모델/도구 왕복을 수행한다.
 
         반환값은 화면용 답변 문자열이다. 부가 결과는 성공 시 self.research,
@@ -434,6 +459,10 @@ class OpenAIConversation:
         record_step({"round": 0, "event": "대화 처리 대기", "detail": "이전 요청이 있으면 완료를 기다립니다."})
         # 같은 세션의 동시 요청이 이력을 뒤섞지 않도록 한다. 다른 세션은 별도 잠금을 쓴다.
         with self.lock:
+            if api_model is not None:
+                if self.chatgpt is not None or not isinstance(api_model, str) or api_model not in {row['id'] for row in api_model_options()[1]}:
+                    raise ChatError('허용되지 않은 API 모델입니다. 화면에서 모델을 다시 선택해 주세요.')
+                self.api_model = api_model
             record_step({"round": 0, "event": "연결·설정 확인", "detail": "대화 상태와 모델 연결 설정을 확인합니다."})
             if message.strip() in {"/reset", "초기화"}:
                 # 초기화는 모델 판단이 필요 없으므로 API 호출 없이 처리한다.
@@ -455,6 +484,9 @@ class OpenAIConversation:
                     raise ChatError("로컬 ChatGPT 인증 저장소를 열지 못했어요.") from error
             else:
                 key, model = settings()
+                default, options = api_model_options(model)
+                model = self.api_model if self.api_model in {row['id'] for row in options} else default
+                self.api_model = model
                 if self.client is None and (not key or key == "aaa"):
                     raise ChatError("OpenAI API 키가 설정되지 않았어요. 프로젝트 .env의 aaa를 실제 API 키로 변경해 주세요.")
                 client = self.client or OpenAI(api_key=key, base_url="https://api.openai.com/v1", timeout=45, max_retries=0)

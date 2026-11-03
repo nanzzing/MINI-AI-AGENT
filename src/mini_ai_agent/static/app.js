@@ -5,6 +5,8 @@
  * 차트는 marketView에 위임하며, 앱의 전역 상태와 서버의 세션 상태는 별개다.
  */
 const $ = (selector) => document.querySelector(selector);
+// 로그인/새 조사로 대화를 비워도 공통 뉴스와 기존 클릭 핸들러를 복원한다.
+const welcomeView = $("#welcome");
 let busy = false;
 let selectedHorizon = null;
 let analysisSelection = "자동";
@@ -591,15 +593,16 @@ function olderButton(hasMore) {
 }
 window.researchHistory = {
   busy: () => busy,
-  clear() {
+  clear(showWelcome = true) {
     $("#messages").replaceChildren(); $("#message").value = "";
+    if (showWelcome && welcomeView) $("#messages").append(welcomeView);
     analysisSelection = "자동"; selectedHorizon = null; historyCount = 0;
     renderCriteria(null, []); marketView.clear();
     $("#sidebar-company").textContent = "선택한 종목 없음";
     $("#sidebar-horizon").textContent = "투자 관점 미정";
   },
   show(turns, thread, more) {
-    this.clear(); historyTurns(turns); olderButton(more);
+    this.clear(false); historyTurns(turns); olderButton(more);
     const last = turns.at(-1)?.result;
     if (last) {
       $("#sidebar-company").textContent = last.company || thread.title;
@@ -624,7 +627,7 @@ document.addEventListener("keydown", (event) => {
 const statusReady = refreshStatus();
 // 첫 화면 추천은 서버가 수집한 관측값이다. LLM이나 고정 종목 목록으로 생성하지 않는다.
 async function loadDiscovery() {
-  const root = $("#discovery");
+  const root = welcomeView?.querySelector("#discovery");
   if (!root) return;
   try {
     const response = await fetch("/api/discovery");

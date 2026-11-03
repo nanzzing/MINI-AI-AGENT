@@ -42,6 +42,8 @@
     <link rel="stylesheet" href="/app.css" />
     <link rel="stylesheet" href="/market.css" />
     <link rel="stylesheet" href="/accounts.css" />
+    <link rel="stylesheet" href="/headlines.css" />
+    <script src="/headlines.js" defer></script>
     <script src="/lucide.js" defer></script>
     <!-- defer는 DOM 준비 후 문서에 적힌 순서대로 실행한다.
          외부 라이브러리 → 지표/그리기 함수 → 시장 화면 → 채팅 화면의 의존 순서다.
@@ -130,6 +132,11 @@
           >
         </header>
         <section class="market-pulse" aria-label="미국 시장 지표">
+          <section class="headline-strip" aria-label="시장 헤드라인">
+            <div class="headline-label"><strong>시장 헤드라인</strong><small id="headline-status" role="status">불러오는 중</small></div>
+            <div class="headline-window" id="headline-window"><div class="headline-track" id="headline-track"></div></div>
+            <button id="headline-pause" type="button" title="뉴스 흐름 일시정지" aria-label="뉴스 흐름 일시정지" aria-pressed="false"><i data-lucide="pause"></i></button>
+          </section>
           <div class="pulse-heading">미국 시장 <span>US MARKET</span></div>
           <div class="pulse-grid">
             <article data-indicator="vix">

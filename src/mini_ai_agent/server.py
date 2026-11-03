@@ -18,6 +18,7 @@ from mini_ai_agent.conversation import RESEARCH_FOCUS
 from mini_ai_agent.llm import OpenAIConversation, ChatError, configuration_status, api_model_options
 from mini_ai_agent.stocks import find_stocks, search_stocks
 from mini_ai_agent.discovery import discover
+from mini_ai_agent.headlines import headlines
 from mini_ai_agent.market_data import stock_identity, price_history, financials, policy
 from mini_ai_agent.chatgpt import ChatGPTConnection, ChatGPTError
 from mini_ai_agent.market_indicators import indicator
@@ -208,6 +209,9 @@ class Handler(AccountRoutes, BaseHTTPRequestHandler):
         if parsed.path == "/api/discovery":
             self.send_json(200, discover())
             return
+        if parsed.path == '/api/headlines':
+            self.send_json(200, headlines())
+            return
         if parsed.path == '/api/market-indicator':
             name = parse_qs(parsed.query).get('name', [''])[0]
             try:
@@ -261,6 +265,8 @@ class Handler(AccountRoutes, BaseHTTPRequestHandler):
                  "/app.js": ("app.js", "text/javascript"), "/lucide.js": ("lucide.js", "text/javascript"),
                  "/auth.js": ("auth.js", "text/javascript"),
                  "/accounts.js": ("accounts.js", "text/javascript"),
+                 "/headlines.js": ("headlines.js", "text/javascript"),
+                 "/headlines.css": ("headlines.css", "text/css"),
                  "/accounts.css": ("accounts.css", "text/css"),
                  "/market-indicators.js": ("market-indicators.js", "text/javascript"),
                  "/charts.js": ("charts.js", "text/javascript"), "/market.js": ("market.js", "text/javascript"),

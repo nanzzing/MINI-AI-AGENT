@@ -7,5 +7,14 @@ services:
     buildCommand: pip install .
     # 외부 요청을 받으려면 0.0.0.0에 바인딩한다. 포트는 server.py가 PORT 환경변수로 읽는다.
     startCommand: python -m mini_ai_agent.server --host 0.0.0.0
-    healthCheckPath: /api/status
+    healthCheckPath: /health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: APP_ORIGIN
+        sync: false
+      - key: PROD_SUPABASE_URL
+        sync: false
+      - key: PROD_SUPABASE_PUBLISHABLE_KEY
+        sync: false
     # 서버가 응답하는지 확인하는 경로이며 OpenAI 키 인증 성공까지 검사하지는 않는다.

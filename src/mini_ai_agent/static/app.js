@@ -445,6 +445,9 @@ async function send(message, reset = false) {
   await statusReady;
   if (busy) return;
   busy = true;
+  let threadId;
+  try { threadId = await window.siteAccount?.prepare(); }
+  catch (error) { busy = false; $("#composer-status").textContent = error.message; return; }
   $("#api-model").disabled = true;
   window.chatgptAuth?.setChatBusy(true);
   document
@@ -482,8 +485,8 @@ async function send(message, reset = false) {
       // message와 입력 모드만 전송한다. 이전 대화 전체를 브라우저가 보내지
       // 않아도 Python 세션이 history를 가지고 있어서 후속 질문을 이어갈 수 있다.
       method: "POST",
-      headers: { "Content-Type": "application/json", "Accept": "application/x-ndjson", ...window.chatgptAuth?.headers() },
-      body: JSON.stringify({ message, selection: analysisSelection, ...(apiModel ? {api_model: apiModel} : {}) }),
+      headers: { "Content-Type": "application/json", "Accept": "application/x-ndjson", ...window.chatgptAuth?.headers(), ...window.siteAccount?.headers() },
+      body: JSON.stringify({ message, thread_id: threadId, selection: analysisSelection, ...(apiModel ? {api_model: apiModel} : {}) }),
     });
     const data = await readChatResponse(response, step => pending.progress(step));
     const elapsedSeconds = pending.finish();
@@ -500,6 +503,9 @@ async function send(message, reset = false) {
     $("#messages").scrollTop = $("#messages").scrollHeight;
     if (!reset) refreshStatus();
     renderContext(data);
+    if (data.storage_warning) addMessage(data.storage_warning, "error");
+    try { await window.siteAccount?.saved(data); }
+    catch { addMessage("답변은 받았지만 조사 목록을 새로 불러오지 못했어요.", "error"); }
     $("#message").value = "";
   } catch (error) {
     pending.finish();
@@ -548,7 +554,60 @@ document
       renderCriteria(analysisSelection === "자동" ? null : analysisSelection, analysisSelection === "자동" ? [] : undefined);
     }),
   );
-$("#new-chat").addEventListener("click", () => send("/reset", true));
+$("#new-chat").addEventListener("click", async () => {
+  if (busy) return;
+  if (!await window.siteAccount?.newResearch()) send("/reset", true);
+});
+
+// 저장된 답변은 당시 결과 그대로 표시한다. 차트/도구를 자동 재조회하지 않는다.
+let historyCount = 0;
+function historyTurns(turns, prepend = false) {
+  const root = $("#messages");
+  const old = prepend ? Array.from(root.childNodes) : [];
+  if (prepend) root.replaceChildren();
+  for (const turn of turns) {
+    addMessage(turn.question, "user");
+    const node = addMessage(turn.result.reply);
+    const date = document.createElement("small");
+    date.className = "message-duration";
+    date.textContent = `저장된 답변 · ${new Date(turn.created_at).toLocaleString("ko-KR")}`;
+    node.querySelector(".message-label").append(date);
+  }
+  if (prepend) root.append(...old);
+  historyCount += turns.length;
+}
+function olderButton(hasMore) {
+  if (!hasMore) return;
+  const button = document.createElement("button"); button.textContent = "이전 대화 더 보기";
+  button.addEventListener("click", async () => {
+    if (busy) return;
+    button.disabled = true;
+    try {
+      const data = await window.siteAccount.older(historyCount);
+      button.remove(); historyTurns(data.turns.slice().reverse(), true); olderButton(data.turns.length === 30);
+    } catch (error) { button.textContent = error.message; button.disabled = false; }
+  });
+  $("#messages").prepend(button);
+}
+window.researchHistory = {
+  busy: () => busy,
+  clear() {
+    $("#messages").replaceChildren(); $("#message").value = "";
+    analysisSelection = "자동"; selectedHorizon = null; historyCount = 0;
+    renderCriteria(null, []); marketView.clear();
+    $("#sidebar-company").textContent = "선택한 종목 없음";
+    $("#sidebar-horizon").textContent = "투자 관점 미정";
+  },
+  show(turns, thread, more) {
+    this.clear(); historyTurns(turns); olderButton(more);
+    const last = turns.at(-1)?.result;
+    if (last) {
+      $("#sidebar-company").textContent = last.company || thread.title;
+      $("#sidebar-horizon").textContent = last.horizon || "자동";
+      renderCriteria(last.horizon, last.focus || [], last.coverage || []);
+    }
+  },
+};
 
 icons();
 // 클릭 바깥/ESC로 도움말을 닫는다. DOM 요소가 아닌 설명 문자열에 이벤트를 연결하지 않는다.

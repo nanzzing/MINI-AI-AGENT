@@ -478,3 +478,11 @@ existing on-disk cookie cache is left intact. No keys, cookie/crumb values, raw
 response bodies, raw exception text, proxy addresses or account details are
 included in the report. Do not enable yfinance debug logging to share results.
 This diagnoses failure scope, not Yahoo's private IP-blocking decisions.
+# 로그인과 조사 기록 (Supabase)
+
+개발·운영은 서로 다른 Supabase 프로젝트를 사용합니다. 이메일 로그인, 인증 코드,
+비밀번호 재설정, 조사 목록/삭제/이어서 질문하기를 지원합니다.
+설정 절차와 DB migration은 [Supabase 설치 안내](docs/supabase-setup.md)를 참고하세요.
+**이 버전을 Render에 배포하기 전에 운영 Supabase 설정과 migration을 먼저 적용해야 합니다.**
+운영 설정이 없으면 로그인 없는 공개 API로 돌아가지 않고 시작을 중단합니다.
+사이트 계정은 ChatGPT 구독 로그인과 별개입니다.

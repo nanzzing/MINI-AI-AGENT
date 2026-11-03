@@ -1,0 +1,28 @@
+.site-account-actions { display:flex; gap:6px; align-items:center; margin-left:auto; min-width:0; }
+.site-account-actions button, .account-dialog button, .saved-research button { font:inherit; cursor:pointer; border:1px solid #43594d; background:#1c2a23; color:#e5eee8; border-radius:4px; padding:8px; }
+.site-account-actions button { display:flex; align-items:center; gap:6px; min-height:34px; font-size:12px; }
+.site-account-actions svg, .account-dialog svg, .saved-research svg { width:16px; height:16px; flex-shrink:0; }
+#account-open span { max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.account-dialog { width:min(460px,calc(100vw - 32px)); max-height:calc(100dvh - 40px); overflow:auto; border:1px solid #43594d; border-radius:8px; background:#14201a; color:#e5eee8; padding:24px; margin:auto; }
+.account-dialog::backdrop { background:#0009; }
+.account-dialog h2 { font-size:20px; margin:0 35px 20px 0; }
+.account-dialog .dialog-close { float:right; display:grid; place-items:center; }
+.account-tabs { display:flex; flex-wrap:wrap; gap:6px; margin:16px 0; }
+.account-tabs button { font-size:12px; }
+.account-tabs [aria-pressed="true"] { background:#30664c; border-color:#77bd94; }
+#account-form { display:grid; gap:14px; }
+#account-form label { display:grid; gap:7px; font-size:13px; }
+#account-form input { width:100%; box-sizing:border-box; background:#0e1712; border:1px solid #52675b; border-radius:4px; color:#fff; padding:10px; font:inherit; }
+#account-error { font-size:12px; line-height:1.6; color:#f0c38b; margin:0; overflow-wrap:anywhere; }
+.saved-research { margin-top:18px; min-height:0; overflow:auto; flex:1; }
+.history-status { font-size:12px; line-height:1.6; color:#9eafa5; overflow-wrap:anywhere; }
+.history-row { display:flex; gap:4px; margin-bottom:6px; min-width:0; }
+.history-row .history-select { border:0; text-align:left; flex:1; min-width:0; background:transparent; }
+.history-select strong { display:block; font-size:12px; font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.history-select small { display:block; font-size:10px; color:#9eafa5; margin-top:5px; }
+.history-row.is-active { background:#264235; border-radius:4px; }
+.history-row .history-delete { background:transparent; border:0; align-self:center; }
+.history-more { width:100%; margin:8px 0; }
+.account-dialog [hidden], .site-account-actions [hidden], .saved-research [hidden] { display:none !important; }
+.topbar { gap:12px; flex-wrap:wrap; }
+@media(max-width:650px) { .site-account-actions { margin-left:0; } .topbar .connection { width:100%; } #account-open span { max-width:140px; } }

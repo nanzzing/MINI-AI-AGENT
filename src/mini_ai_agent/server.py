@@ -22,6 +22,8 @@ from mini_ai_agent.market_data import stock_identity, price_history, financials,
 from mini_ai_agent.chatgpt import ChatGPTConnection, ChatGPTError
 from mini_ai_agent.market_indicators import indicator
 from mini_ai_agent.yahoo_diagnostics import start_startup_diagnostics
+from mini_ai_agent.accounts import Accounts, AccountError, configuration as account_configuration
+from mini_ai_agent.account_routes import AccountRoutes
 
 STATIC = Path(__file__).parent / "static"
 # 쿠키의 임의 식별자로 사용자별 대화를 구분한다. 서버를 종료하면 이 메모리는 사라진다.
@@ -36,7 +38,7 @@ class ClientDisconnected(Exception):
     """다음 단계 전송에서 연결 종료를 감지하면 추가 모델/도구 호출을 중단한다."""
 
 
-class Handler(BaseHTTPRequestHandler):
+class Handler(AccountRoutes, BaseHTTPRequestHandler):
     """요청 하나를 처리하는 객체. 영속 상태는 Handler가 아니라 SESSIONS에 둔다.
 
     GET /              : 화면 파일
@@ -114,6 +116,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        if getattr(self, 'account_set_cookie', None):
+            self.send_header('Set-Cookie', self.account_set_cookie)
         if cookie:
             # 세션 쿠키를 JS에서 직접 읽지 못하게 하고 다른 사이트 요청에서의 전송을 제한한다.
             self.send_header("Set-Cookie", f"session={cookie}; HttpOnly; SameSite=Strict; Path=/")
@@ -168,6 +172,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == '/health':
             # 모델 인증/시장 데이터 상태가 아닌 HTTP 서버의 응답 가능 여부만 확인한다.
             self.send_json(200, {'status': 'ok'})
+            return
+        if parsed.path in ('/api/account', '/api/threads', '/api/thread'):
+            self.account_get(parsed)
             return
         if parsed.path == '/auth/callback':
             if self.chatgpt is None:
@@ -253,6 +260,8 @@ class Handler(BaseHTTPRequestHandler):
         files = {"/": ("index.html", "text/html"), "/app.css": ("app.css", "text/css"),
                  "/app.js": ("app.js", "text/javascript"), "/lucide.js": ("lucide.js", "text/javascript"),
                  "/auth.js": ("auth.js", "text/javascript"),
+                 "/accounts.js": ("accounts.js", "text/javascript"),
+                 "/accounts.css": ("accounts.css", "text/css"),
                  "/market-indicators.js": ("market-indicators.js", "text/javascript"),
                  "/charts.js": ("charts.js", "text/javascript"), "/market.js": ("market.js", "text/javascript"),
                  "/indicators.js": ("indicators.js", "text/javascript"),
@@ -284,6 +293,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith('/api/auth/'):
             self.auth_post()
             return
+        if self.path.startswith(('/api/account/', '/api/threads/')):
+            self.account_post()
+            return
         if self.path != "/api/chat":
             self.send_json(404, {"error": "요청을 찾을 수 없어요."})
             return
@@ -313,15 +325,23 @@ class Handler(BaseHTTPRequestHandler):
         cookies.load(self.headers.get("Cookie", ""))
         session = cookies.get("session")
         token = session.value if session else ""
+        account_session = thread = None
+        if self.accounts:
+            try:
+                account_session, thread, conversation = self.restore_research(data)
+            except AccountError as error:
+                self.send_json(error.status, {'error': str(error)})
+                return
         with LOCK:
             # 전체 세션 저장소는 생성·조회할 때만 잠근다. 느린 API 호출 중에는 잠그지 않는다.
-            if token not in SESSIONS:
+            if not self.accounts and token not in SESSIONS:
                 token = secrets.token_urlsafe(24)
                 if len(SESSIONS) >= 1000:
                     # 메모리 사용을 제한하기 위해 가장 먼저 등록된 세션부터 제거한다.
                     SESSIONS.pop(next(iter(SESSIONS)))
                 SESSIONS[token] = OpenAIConversation(chatgpt=self.chatgpt)
-            conversation = SESSIONS[token]
+            if not self.accounts:
+                conversation = SESSIONS[token]
         streaming = 'application/x-ndjson' in self.headers.get('Accept', '').split(',')
         try:
             model_args = {'api_model': api_model} if api_model is not None else {}
@@ -362,6 +382,8 @@ class Handler(BaseHTTPRequestHandler):
             # 예외 원문에는 외부 응답/자격 증명이 섞일 수 있어 브라우저에 보내지 않는다.
             self.finish_chat(500, {"error": "조사 처리 중 오류가 발생했어요. 다시 시도해 주세요."}, token, streaming)
             return
+        if self.accounts:
+            self.persist_research(account_session, thread, conversation, message, result)
         self.finish_chat(200, result, token, streaming)
 
 
@@ -377,6 +399,10 @@ def main() -> None:
     if args.auth == 'chatgpt' and not local:
         parser.error('ChatGPT 구독 모드는 127.0.0.1 로컬 실행에서만 지원합니다.')
     server = ThreadingHTTPServer((args.host, args.port), Handler)
+    config = account_configuration()
+    if config and not config['origin']:
+        config['origin'] = f'http://127.0.0.1:{server.server_port}'
+    server.accounts = Accounts(config) if config else None
     server.chatgpt = ChatGPTConnection() if local and args.auth != 'api' else None
     server.csrf = secrets.token_urlsafe(32)
     # 여러 사용자의 요청을 스레드로 처리한다. 개별 대화의 동시 변경은 llm.py에서 잠근다.
@@ -390,6 +416,8 @@ def main() -> None:
         server.server_close()
         if server.chatgpt is not None:
             server.chatgpt.close()
+        if server.accounts is not None:
+            server.accounts.close()
 
 
 if __name__ == "__main__":

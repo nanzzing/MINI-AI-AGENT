@@ -41,6 +41,7 @@
     />
     <link rel="stylesheet" href="/app.css" />
     <link rel="stylesheet" href="/market.css" />
+    <link rel="stylesheet" href="/accounts.css" />
     <script src="/lucide.js" defer></script>
     <!-- defer는 DOM 준비 후 문서에 적힌 순서대로 실행한다.
          외부 라이브러리 → 지표/그리기 함수 → 시장 화면 → 채팅 화면의 의존 순서다.
@@ -52,8 +53,32 @@
     <script src="/auth.js" defer></script>
     <script src="/market-indicators.js" defer></script>
     <script src="/app.js" defer></script>
+    <script src="/accounts.js" defer></script>
   </head>
   <body>
+    <dialog id="account-dialog" class="account-dialog" aria-labelledby="account-title">
+      <button class="dialog-close" type="button" title="닫기" aria-label="닫기"><i data-lucide="x"></i></button>
+      <h2 id="account-title">MINI 계정</h2>
+      <div class="account-tabs" role="group" aria-label="계정 작업">
+        <button data-account-mode="login" aria-pressed="true">로그인</button>
+        <button data-account-mode="signup" aria-pressed="false">회원가입</button>
+        <button data-account-mode="confirm" aria-pressed="false">이메일 인증</button>
+        <button data-account-mode="recovery" aria-pressed="false">비밀번호 재설정</button>
+      </div>
+      <form id="account-form">
+        <label>이메일<input id="account-email" type="email" autocomplete="username" maxlength="254" required></label>
+        <label id="account-password-label">비밀번호<input id="account-password" type="password" autocomplete="current-password" minlength="8" maxlength="128" required></label>
+        <label id="account-code-label" hidden>인증 코드<input id="account-code" inputmode="numeric" autocomplete="one-time-code" maxlength="10"></label>
+        <p id="account-error" role="status"></p>
+        <button id="account-submit" type="submit">로그인</button>
+      </form>
+    </dialog>
+    <dialog id="history-dialog" class="account-dialog" aria-labelledby="history-title">
+      <button class="dialog-close" type="button" title="닫기" aria-label="닫기"><i data-lucide="x"></i></button>
+      <h2 id="history-title">조사 기록</h2>
+      <p class="history-status"></p><div id="research-list-mobile"></div>
+      <button class="history-more" hidden>더 보기</button>
+    </dialog>
     <div class="workspace">
       <aside class="sidebar">
         <!-- 새로운 조사는 /reset을 서버에 보낸다. 브라우저 새로고침과 다른 동작이다. -->
@@ -77,6 +102,12 @@
           <div id="sidebar-company">선택한 종목 없음</div>
           <small id="sidebar-horizon">투자 관점 미정</small>
         </div>
+        <section class="saved-research" aria-label="저장된 조사">
+          <div class="nav-label">조사 기록</div>
+          <p class="history-status">로그인 상태 확인 중</p>
+          <div id="research-list"></div>
+          <button class="history-more" hidden>더 보기</button>
+        </section>
         <div class="sidebar-bottom">
           <span class="status-dot"></span>로컬 워크스페이스<small
             >MINI-AI-AGENT / 0.1</small
@@ -88,6 +119,11 @@
           <div>
             <span class="breadcrumb">워크스페이스</span
             ><span class="slash">/</span>종목 리서치
+          </div>
+          <div class="site-account-actions">
+            <button id="history-open" title="조사 기록" aria-label="조사 기록"><i data-lucide="history"></i></button>
+            <button id="account-open"><i data-lucide="user-round"></i><span>로그인</span></button>
+            <button id="account-logout" hidden title="로그아웃" aria-label="로그아웃"><i data-lucide="log-out"></i></button>
           </div>
           <span class="connection"
             ><span class="status-dot"></span>대화 연결됨</span

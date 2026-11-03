@@ -29,7 +29,12 @@
     const data = await request('/api/account');
     enabled = data.enabled; user = data.user;
     renderAccount();
-    if (user) await loadList();
+    if (user) await loadListAfterLogin();
+  }
+  async function loadListAfterLogin() {
+    // 인증 성공과 저장소 조회 실패를 분리해 로그인 재시도를 유도하지 않는다.
+    try { await loadList(); }
+    catch (error) { status('로그인되어 있지만 조사 기록을 불러오지 못했어요. ' + error.message); }
   }
   async function loadList(more = false) {
     const data = await request('/api/threads?offset=' + (more ? rows.length : 0));
@@ -98,7 +103,9 @@
     try {
       const data = await request('/api/account/' + mode, {email:el('account-email').value.trim(), password:el('account-password').value, code:el('account-code').value.trim()});
       if (mode === 'login') {
-        user = data.user; resetView(); await loadList(); dialog.close();
+        user = data.user; rows = []; resetView(); renderAccount(); dialog.close();
+        el('account-password').value = ''; el('account-code').value = '';
+        await loadListAfterLogin();
       } else {
         if (mode === 'recovery') chooseMode('password');
         else if (mode === 'signup') chooseMode('confirm');

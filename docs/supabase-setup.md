@@ -18,7 +18,7 @@ Supabase에서 `mini-ai-dev`, `mini-ai-prod`라는 **서로 다른 프로젝트*
 
 Project Settings의 API 설정에서 Project URL과 **publishable key**를 확인한다.
 `sb_publishable_`로 시작하는 새 키를 사용한다. secret/service_role 키는 사용하지 않는다.
-
+ 
 ```dotenv
 APP_ENV=development
 APP_ORIGIN=http://127.0.0.1:8765

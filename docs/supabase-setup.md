@@ -8,7 +8,7 @@ Supabase에서 `mini-ai-dev`, `mini-ai-prod`라는 **서로 다른 프로젝트*
 
 각 프로젝트의 SQL Editor에서 다음 파일을 **한 번씩** 실행한다.
 
-`supabase/migrations/202611020001_research.sql`
+`supabase/migrations/202611020001_research.sql` 
 
 앞으로 스키마 변경은 새로운 migration 파일로 추가하고 개발에서 확인한 뒤 운영에 적용한다.
 기존 migration을 다시 실행하거나 운영 데이터를 개발 DB에 복사하지 않는다.

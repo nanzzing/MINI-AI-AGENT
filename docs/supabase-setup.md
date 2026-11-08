@@ -22,8 +22,8 @@ Project Settings의 API 설정에서 Project URL과 **publishable key**를 확�
 ```dotenv
 APP_ENV=development
 APP_ORIGIN=http://127.0.0.1:8765
-DEV_SUPABASE_URL=https://DEV_PROJECT.supabase.co
-DEV_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+DEV_SUPABASE_URL=https://DEV_PROJECT.supabse.co
+DEV_SUPABASE_PUBLISHABLE_KEY=sb_publishable_.a..
 ```
 
 다른 포트를 사용하면 APP_ORIGIN도 정확히 맞춘다. 생략하면 로컬 127.0.0.1과 실행 포트를 사용한다.

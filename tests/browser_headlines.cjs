@@ -31,7 +31,8 @@ const { chromium } = require('C:/Users/Park Chan Wan/.cache/codex-runtimes/codex
       assert.ok(await page.locator('.headline-strip').evaluate(e => e.getBoundingClientRect().right <= innerWidth));
       await page.screenshot({path:path.join(os.tmpdir(), `mini-headlines-${width}.png`)});
       await page.emulateMedia({reducedMotion:'reduce'});
-      assert.equal(await track.evaluate(e => getComputedStyle(e).animationName), 'none');
+      assert.equal(await track.evaluate(e => getComputedStyle(e).animationName), 'headline-scroll');
+      assert.equal(await page.locator('.headline-window').evaluate(e => getComputedStyle(e).overflowX), 'hidden');
       await page.close();
     }
     console.log('Desktop/mobile headlines: live feed, animation, pause, reset, reduced motion passed');

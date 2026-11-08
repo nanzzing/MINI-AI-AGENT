@@ -14,4 +14,4 @@
 #headline-pause svg { width:16px; height:16px; }
 @keyframes headline-scroll { to { transform:translateX(-50%); } }
 @media(max-width:600px) { .headline-strip { flex-wrap:wrap; gap:10px; } .headline-label { flex:1; } .headline-window { order:3; flex-basis:100%; } }
-@media(prefers-reduced-motion:reduce) { .headline-track { animation:none; } .headline-window { overflow-x:auto; } .headline-group[aria-hidden] { display:none; } #headline-pause { display:none; } }
+/* 기기의 동작 줄이기 설정과 관계없이 자동 이동하며, 일시정지 버튼으로 제어한다. */
